@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:support.on24.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(npx create-next-app:*)",
+      "Bash(where node)",
+      "Bash(where npm)"
+    ]
+  }
+}
