@@ -28,15 +28,18 @@ export function PerformanceChart({ webinars }: PerformanceChartProps) {
   const chartData = [...webinars]
     .sort((a, b) => new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime())
     .slice(-10)
-    .map((w) => ({
-      name: w.webinarName.length > 20 ? w.webinarName.slice(0, 20) + '...' : w.webinarName,
-      fullName: w.webinarName,
+    .map((w) => {
+      const name = w.webinarName || `Event ${w.eventId}`;
+      return {
+        name: name.length > 20 ? name.slice(0, 20) + '...' : name,
+        fullName: name,
       engagement: w.engagementScore,
       attendanceRate:
         w.totalRegistrations > 0
           ? ((w.totalAttendees / w.totalRegistrations) * 100).toFixed(1)
           : 0,
-    }));
+      };
+    });
 
   if (chartData.length === 0) {
     return (

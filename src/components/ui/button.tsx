@@ -8,10 +8,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantStyles = {
-  primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
-  secondary: 'bg-gray-600 text-white hover:bg-gray-700 focus:ring-gray-500',
-  outline: 'border border-gray-300 text-gray-700 hover:bg-gray-50 focus:ring-gray-500',
-  ghost: 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus:ring-gray-500',
+  primary: 'bg-ansell-teal text-white hover:bg-ansell-teal-dark focus:ring-ansell-teal',
+  secondary: 'bg-ansell-dark text-white hover:bg-ansell-dark-darker focus:ring-ansell-dark',
+  outline: 'border border-ansell-gray-300 text-ansell-gray-700 hover:bg-ansell-gray-50 focus:ring-ansell-teal',
+  ghost: 'text-ansell-gray-600 hover:bg-ansell-gray-100 hover:text-ansell-gray-900 focus:ring-ansell-teal',
   danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
 };
 
@@ -33,7 +33,7 @@ export function Button({
   return (
     <button
       className={`
-        inline-flex items-center justify-center font-medium rounded-md
+        inline-flex items-center justify-center font-medium
         focus:outline-none focus:ring-2 focus:ring-offset-2
         disabled:opacity-50 disabled:cursor-not-allowed
         transition-colors duration-200

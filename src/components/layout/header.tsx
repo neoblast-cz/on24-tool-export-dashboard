@@ -5,14 +5,13 @@ import { usePathname } from 'next/navigation';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard' },
-  { name: 'Export', href: '/export' },
 ];
 
 export function Header() {
   const pathname = usePathname();
 
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200">
+    <header className="bg-ansell-dark shadow-sm border-b border-ansell-dark-darker">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex">
@@ -20,7 +19,7 @@ export function Header() {
             <div className="flex-shrink-0 flex items-center">
               <Link href="/dashboard" className="flex items-center gap-2">
                 <svg
-                  className="h-8 w-8 text-blue-600"
+                  className="h-8 w-8 text-ansell-teal"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -32,7 +31,7 @@ export function Header() {
                     d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
                   />
                 </svg>
-                <span className="font-bold text-xl text-gray-900">On24 Analytics</span>
+                <span className="font-bold text-xl text-white">On24 Analytics</span>
               </Link>
             </div>
 
@@ -45,10 +44,10 @@ export function Header() {
                     key={item.name}
                     href={item.href}
                     className={`
-                      inline-flex items-center px-3 py-2 text-sm font-medium rounded-md
+                      inline-flex items-center px-3 py-2 text-sm font-medium
                       ${isActive
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                        ? 'bg-ansell-dark-light text-white border-b-2 border-ansell-teal'
+                        : 'text-gray-300 hover:text-white hover:bg-ansell-dark-light'
                       }
                     `}
                   >
@@ -61,13 +60,13 @@ export function Header() {
 
           {/* Right side */}
           <div className="flex items-center">
-            <span className="text-sm text-gray-500">Ansell Healthcare</span>
+            <span className="text-sm text-gray-300 font-medium">Ansell Healthcare</span>
           </div>
         </div>
       </div>
 
       {/* Mobile navigation */}
-      <nav className="sm:hidden border-t border-gray-200">
+      <nav className="sm:hidden border-t border-ansell-dark-light">
         <div className="flex space-x-4 px-4 py-2">
           {navigation.map((item) => {
             const isActive = pathname === item.href;
@@ -76,10 +75,10 @@ export function Header() {
                 key={item.name}
                 href={item.href}
                 className={`
-                  flex-1 text-center px-3 py-2 text-sm font-medium rounded-md
+                  flex-1 text-center px-3 py-2 text-sm font-medium
                   ${isActive
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    ? 'bg-ansell-dark-light text-white border-b-2 border-ansell-teal'
+                    : 'text-gray-300 hover:text-white hover:bg-ansell-dark-light'
                   }
                 `}
               >

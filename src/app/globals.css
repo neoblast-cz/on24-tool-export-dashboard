@@ -4,22 +4,24 @@
 
 :root {
   --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 249, 250, 251;
+  --background-start-rgb: 245, 245, 245;
   --background-end-rgb: 255, 255, 255;
+
+  /* Ansell brand colors (from brandfetch.com/ansell.com) */
+  --ansell-teal: #00b09c;
+  --ansell-teal-dark: #009485;
+  --ansell-teal-light: #78b8a8;
+  --ansell-dark: #71706e;
+  --ansell-light: #f5f5f5;
 }
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  background: var(--ansell-light);
   min-height: 100vh;
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar - no rounded corners */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -27,14 +29,22 @@ body {
 
 ::-webkit-scrollbar-track {
   background: #f1f1f1;
-  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
   background: #c1c1c1;
-  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: #a1a1a1;
+}
+
+/* Override any remaining rounded corners */
+* {
+  border-radius: 0 !important;
+}
+
+/* Exception for rounded-full (circles, pills) */
+.rounded-full {
+  border-radius: 9999px !important;
 }

@@ -49,7 +49,7 @@ export class On24Client {
       accesstokenkey: this.tokenKey,
       accesstokensecret: this.tokenSecret,
       accept: 'application/json',
-      'content-type': 'application/json',
+      ...(body && { 'content-type': 'application/json' }),
     };
 
     const response = await fetch(url, {

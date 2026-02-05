@@ -6,7 +6,12 @@
       "WebFetch(domain:github.com)",
       "Bash(npx create-next-app:*)",
       "Bash(where node)",
-      "Bash(where npm)"
+      "Bash(where npm)",
+      "WebFetch(domain:www.ansell.com)",
+      "WebFetch(domain:brandfetch.com)",
+      "WebFetch(domain:apidoc.on24.com)",
+      "WebFetch(domain:developers.cvent.com)",
+      "Bash(npm run build:*)"
     ]
   }
 }

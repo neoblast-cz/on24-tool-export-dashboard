@@ -94,7 +94,7 @@ export function isCacheValid(lastRefreshed: string | null): boolean {
   return now - lastRefreshTime < CACHE_DURATION_MS;
 }
 
-// Format relative time
+// Format relative time (kept for compatibility)
 export function formatRelativeTime(isoDate: string): string {
   const date = new Date(isoDate);
   const now = new Date();
@@ -107,4 +107,17 @@ export function formatRelativeTime(isoDate: string): string {
   if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
   if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
   return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+}
+
+// Format timestamp for display
+export function formatTimestamp(isoDate: string): string {
+  const date = new Date(isoDate);
+  return date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
 }

@@ -7,7 +7,7 @@ import { calculatePerformanceRating } from '@/lib/analytics/recommendations';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { eventIds, preview }: { eventIds: number[]; preview?: boolean } = body;
+    const { eventIds, preview, selectedColumns }: { eventIds: number[]; preview?: boolean; selectedColumns?: string[] } = body;
 
     if (!eventIds || !Array.isArray(eventIds) || eventIds.length === 0) {
       return NextResponse.json(
@@ -34,17 +34,39 @@ export async function POST(request: NextRequest) {
       if (result.status === 'fulfilled') {
         const { eventId, data } = result.value;
         try {
-          // Get campaign code from event
-          const campaignName =
+          // Get campaign code from event (try multiple field names)
+          const customFields = data.event.customFields as Record<string, string> | undefined;
+          const campaignNameRaw =
             data.event.campaignCode ||
-            data.event.customFields?.['Campaign Code'] ||
-            data.event.customFields?.['campaignCode'] ||
-            'General';
+            data.event.campaigncode ||
+            customFields?.['Campaign Code'] ||
+            customFields?.['campaignCode'] ||
+            '';
+          const campaignName = typeof campaignNameRaw === 'string' ? campaignNameRaw : '';
+
+          // Get webinar name (try multiple field names)
+          const webinarNameRaw = data.event.title ||
+            data.event.eventtitle ||
+            data.event.eventname ||
+            data.event.description ||
+            `Event ${eventId}`;
+          const webinarName = typeof webinarNameRaw === 'string' ? webinarNameRaw : `Event ${eventId}`;
+
+          // Get start date (try multiple field names)
+          const startDateRawValue = data.event.eventStartDate ||
+            data.event.eventstartdate ||
+            data.event.startdate ||
+            data.event.localstarttime ||
+            null;
+          const startDateRaw = typeof startDateRawValue === 'string' ? startDateRawValue : null;
 
           // Calculate engagement score
+          const getAttendeeEngagement = (a: typeof data.attendees[0]) => {
+            return a.engagementScore ?? a.engagementscore ?? a.engagement ?? 0;
+          };
           const avgEngagementFromAttendees =
             data.attendees.length > 0
-              ? data.attendees.reduce((sum, a) => sum + (a.engagementScore || 0), 0) /
+              ? data.attendees.reduce((sum, a) => sum + getAttendeeEngagement(a), 0) /
                 data.attendees.length
               : 0;
           const engagementScore =
@@ -58,12 +80,21 @@ export async function POST(request: NextRequest) {
           // Unique poll questions
           const uniquePollQuestions = new Set(data.polls.map((p) => p.pollQuestion)).size;
 
+          // Format date safely
+          const formattedDate = startDateRaw
+            ? new Date(startDateRaw).toLocaleDateString('en-US')
+            : 'No date';
+
+          // Detect test webinars
+          const isTest = /test|demo|trial/i.test(webinarName);
+          const hasCampaignCode = Boolean(campaignName && campaignName.trim() !== '');
+
           exportData.push({
             eventId,
             campaignName,
-            webinarName: data.event.title,
-            date: new Date(data.event.eventStartDate).toLocaleDateString('en-US'),
-            startDateTime: data.event.eventStartDate,
+            webinarName,
+            date: formattedDate,
+            startDateTime: startDateRaw || new Date().toISOString(),
             totalRegistrations: data.registrants.length,
             totalAttendees: data.attendees.length,
             avgMinutesViewed: data.analytics.averageViewDuration || 0,
@@ -78,6 +109,8 @@ export async function POST(request: NextRequest) {
             pollResponses: data.polls.length,
             performanceRating: calculatePerformanceRating(engagementScore),
             recommendations: [],
+            isTest,
+            hasCampaignCode,
           });
         } catch (transformError) {
           errors.push({
@@ -104,8 +137,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Generate CSV
-    const csv = generateCSV(exportData);
+    // Generate CSV with selected columns
+    const csv = generateCSV(exportData, selectedColumns);
 
     // Return as downloadable file
     return new NextResponse(csv, {

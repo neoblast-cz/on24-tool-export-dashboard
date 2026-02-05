@@ -2,12 +2,21 @@
 
 export type PerformanceRating = 'excellent' | 'good' | 'average' | 'poor';
 
+// Speaker info
+export interface Speaker {
+  name: string;
+  title?: string;
+  company?: string;
+  description?: string;
+}
+
 export interface WebinarSummary {
   eventId: number;
   campaignName: string;
   webinarName: string;
   date: string;
   startDateTime: string;
+  endDateTime?: string;
   totalRegistrations: number;
   totalAttendees: number;
   avgMinutesViewed: number;
@@ -22,6 +31,48 @@ export interface WebinarSummary {
   pollResponses: number;
   performanceRating: PerformanceRating;
   recommendations: string[];
+  // Additional fields
+  isTest?: boolean;
+  hasCampaignCode?: boolean;
+  // Expanded details
+  description?: string;
+  promotionalSummary?: string;
+  tags?: string[];
+  language?: string;
+  duration?: number;
+  eventType?: string;
+  category?: string;
+  timezone?: string;
+  status?: string;
+  // Speakers
+  speakers?: Speaker[];
+  // URLs
+  audienceUrl?: string;
+  reportUrl?: string;
+  // Funnel stages
+  funnelStages?: string[];
+  // Event Analytics (from API)
+  eventAnalytics?: {
+    totalRegistrants?: number;
+    totalAttendees?: number;
+    noShowCount?: number;
+    registrationPageHits?: number;
+    numberOfGetPricingRequests?: number;
+    numberOfFreeTrialRequests?: number;
+    numberOfResourcesAvailable?: number;
+    attendeesWhoDownloadedResource?: number;
+    uniqueAttendeeResourceDownloads?: number;
+    numberOfMeetingConversions?: number;
+    numberOfDemoConversions?: number;
+    averageArchiveMinutes?: number;
+    averageCumulativeArchiveMinutes?: number;
+    totalCumulativeLiveMinutes?: number;
+    totalCumulativeArchiveMinutes?: number;
+    totalCumulativeMinutes?: number;
+    totalMediaPlayerMinutes?: number;
+    totalLiveMediaPlayerMinutes?: number;
+    totalArchiveMediaPlayerMinutes?: number;
+  };
 }
 
 export interface DashboardData {
