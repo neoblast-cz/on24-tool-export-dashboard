@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
 
           // Calculate contact CTA clicks
           const contactCTAs = data.cta.filter(
-            (c) => c.ctaType === 'contact' || c.ctaName.toLowerCase().includes('contact')
+            (c) => c.actiontype === 'contact' || c.ctaname.toLowerCase().includes('contact')
           );
 
           // Unique poll questions
@@ -86,7 +86,9 @@ export async function POST(request: NextRequest) {
             : 'No date';
 
           // Detect test webinars
-          const isTest = /test|demo|trial/i.test(webinarName);
+          const isTest = /test|demo|trial/i.test(webinarName)
+            || /do not use/i.test(webinarName)
+            || /can be deleted/i.test(webinarName);
           const hasCampaignCode = Boolean(campaignName && campaignName.trim() !== '');
 
           exportData.push({
@@ -100,7 +102,7 @@ export async function POST(request: NextRequest) {
             avgMinutesViewed: data.analytics.averageViewDuration || 0,
             engagementScore,
             surveyResponses: data.surveys.length,
-            questionsAsked: data.questions.length,
+            questionsAsked: data.analytics.questionsAsked || 0,
             resourcesDownloaded: data.resources.length,
             uniqueUsers: data.attendees.length,
             newUsers: 0,

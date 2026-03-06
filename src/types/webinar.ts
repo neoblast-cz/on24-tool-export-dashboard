@@ -73,6 +73,36 @@ export interface WebinarSummary {
     totalLiveMediaPlayerMinutes?: number;
     totalArchiveMediaPlayerMinutes?: number;
   };
+  // Attendee-derived metrics (computed from attendee endpoint)
+  attendeeMetrics?: AttendeeMetrics;
+}
+
+export interface AttendeeMetrics {
+  loaded: boolean;
+  error?: string;
+  // Counts
+  attendeeCount: number;
+  liveViewerCount: number;
+  archiveViewerCount: number;
+  // Engagement
+  avgEngagementScore: number;
+  // Live viewing (minutes)
+  totalLiveMinutes: number;
+  avgLiveMinutes: number;
+  // Archive viewing (minutes)
+  totalArchiveMinutes: number;
+  avgArchiveMinutes: number;
+  // Total viewing (minutes)
+  totalViewingMinutes: number;
+  avgViewingMinutes: number;
+  // Interactions
+  totalQuestionsAsked: number;
+  totalResourcesDownloaded: number;
+  totalPollsAnswered: number;
+  totalSurveysAnswered: number;
+  totalReactions?: number;
+  reactionsByType?: Record<string, number>;
+  resourceBreakdown?: Record<string, number>;
 }
 
 export interface DashboardData {

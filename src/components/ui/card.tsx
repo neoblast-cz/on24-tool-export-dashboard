@@ -1,13 +1,31 @@
-import { ReactNode } from 'react';
+import { ReactNode, CSSProperties } from 'react';
+
+// Accent color → top border style, matching ansell.digital.css dash-card pattern
+const ACCENT_STYLES: Record<string, CSSProperties> = {
+  blue:  { borderTop: '5px solid #0063AC' },
+  teal:  { borderTop: '5px solid #00A28F' },
+  gray:  { borderTop: '5px solid #75787B' },
+  purple:{ borderTop: '5px solid #7030A0' },
+  amber: { borderTop: '5px solid #D97706' },
+  violet:{ borderTop: '5px solid #7C3AED' },
+  none:  {},
+};
+
+const CARD_SHADOW: CSSProperties = { boxShadow: '0 1px 4px rgba(0,0,0,0.08)' };
 
 interface CardProps {
   children: ReactNode;
   className?: string;
+  accent?: 'blue' | 'teal' | 'gray' | 'purple' | 'amber' | 'violet' | 'none';
+  style?: CSSProperties;
 }
 
-export function Card({ children, className = '' }: CardProps) {
+export function Card({ children, className = '', accent = 'none', style }: CardProps) {
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className}`}>
+    <div
+      className={`bg-white ${className}`}
+      style={{ ...CARD_SHADOW, ...ACCENT_STYLES[accent], ...style }}
+    >
       {children}
     </div>
   );
@@ -19,7 +37,11 @@ interface CardHeaderProps {
 }
 
 export function CardHeader({ children, className = '' }: CardHeaderProps) {
-  return <div className={`px-6 py-4 border-b border-gray-200 ${className}`}>{children}</div>;
+  return (
+    <div className={`px-6 py-4 border-b border-gray-100 ${className}`}>
+      {children}
+    </div>
+  );
 }
 
 interface CardContentProps {
@@ -37,5 +59,9 @@ interface CardTitleProps {
 }
 
 export function CardTitle({ children, className = '' }: CardTitleProps) {
-  return <h3 className={`text-lg font-semibold text-gray-900 ${className}`}>{children}</h3>;
+  return (
+    <h3 className={`text-[13px] font-bold uppercase tracking-[0.06em] text-ansell-gray ${className}`}>
+      {children}
+    </h3>
+  );
 }

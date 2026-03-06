@@ -1,18 +1,19 @@
+@import url('https://fonts.googleapis.com/css2?family=Asap:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 245, 245, 245;
-  --background-end-rgb: 255, 255, 255;
-
-  /* Ansell brand colors (from brandfetch.com/ansell.com) */
-  --ansell-teal: #00b09c;
-  --ansell-teal-dark: #009485;
-  --ansell-teal-light: #78b8a8;
-  --ansell-dark: #71706e;
-  --ansell-light: #f5f5f5;
+  /* Ansell brand colors (ansell.digital.css visual bible) */
+  --ansell-blue: #0063AC;
+  --ansell-teal: #00A28F;
+  --ansell-teal-dark: #008778;
+  --ansell-dark: #2C2A29;
+  --ansell-gray: #75787B;
+  --ansell-light-gray: #BBBCBC;
+  --ansell-light: #f5f6f7;
+  --accent-purple: #7030A0;
 }
 
 body {
@@ -39,12 +40,30 @@ body {
   background: #a1a1a1;
 }
 
-/* Override any remaining rounded corners */
+/* Base 8px border radius on all elements */
 * {
+  border-radius: 8px !important;
+}
+
+/* Exceptions */
+.rounded-none {
   border-radius: 0 !important;
 }
 
-/* Exception for rounded-full (circles, pills) */
 .rounded-full {
   border-radius: 9999px !important;
+}
+
+/* Structural elements that should have no radius */
+html, body, table, thead, tbody, tfoot, tr, col, colgroup {
+  border-radius: 0 !important;
+}
+
+/* Ansell section label — mirrors CardTitle */
+.section-label {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ansell-gray);
 }

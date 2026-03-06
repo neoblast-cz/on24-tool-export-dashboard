@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { WebinarSummary } from '@/types/webinar';
 import { ALL_CSV_COLUMNS, getDefaultSelectedColumns, generateCSV } from '@/lib/csv/generator';
 import { Button } from '@/components/ui/button';
+import { useWebinarStore } from '@/store/webinar-store';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -27,6 +28,25 @@ function getPreviewValue(webinar: WebinarSummary, key: string): string {
       if (!webinar.hasCampaignCode) issues.push('Missing campaign code');
       return issues.length > 0 ? issues.join('; ') : 'OK';
     default:
+      // Attendee-derived metrics
+      if (key.startsWith('am_')) {
+        const am = webinar.attendeeMetrics;
+        if (!am?.loaded) return '(loading...)';
+        switch (key) {
+          case 'am_attendeeCount': return am.attendeeCount.toString();
+          case 'am_avgEngagementScore': return am.avgEngagementScore.toFixed(1);
+          case 'am_totalLiveHours': return (am.totalLiveMinutes / 60).toFixed(2);
+          case 'am_totalArchiveHours': return (am.totalArchiveMinutes / 60).toFixed(2);
+          case 'am_totalViewingHours': return (am.totalViewingMinutes / 60).toFixed(2);
+          case 'am_avgLiveMinutes': return am.avgLiveMinutes.toFixed(1);
+          case 'am_avgArchiveMinutes': return am.avgArchiveMinutes.toFixed(1);
+          case 'am_totalQuestionsAsked': return am.totalQuestionsAsked.toString();
+          case 'am_totalResourcesDownloaded': return am.totalResourcesDownloaded.toString();
+          case 'am_totalPollsAnswered': return am.totalPollsAnswered.toString();
+          case 'am_totalSurveysAnswered': return am.totalSurveysAnswered.toString();
+          default: return '-';
+        }
+      }
       const value = webinar[key as keyof WebinarSummary];
       if (value === undefined || value === null) return '-';
       if (Array.isArray(value)) return value.join(', ') || '-';
@@ -40,6 +60,13 @@ export function ExportModal({ isOpen, onClose, webinars }: ExportModalProps) {
   const [selectedFields, setSelectedFields] = useState<string[]>([]);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [showPreview, setShowPreview] = useState(true);
+  const attendeeMetricsLoading = useWebinarStore((s) => s.attendeeMetricsLoading);
+
+  // Check if any am_ fields are selected and metrics aren't fully loaded
+  const hasAmFields = selectedFields.some((f) => f.startsWith('am_'));
+  const metricsNotFullyLoaded = hasAmFields && (
+    attendeeMetricsLoading || webinars.some((w) => !w.attendeeMetrics?.loaded)
+  );
 
   useEffect(() => {
     if (isOpen) {
@@ -248,9 +275,16 @@ export function ExportModal({ isOpen, onClose, webinars }: ExportModalProps) {
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between bg-gray-50">
-          <p className="text-xs text-gray-500">
-            File will open directly in Excel (UTF-8 compatible)
-          </p>
+          <div>
+            <p className="text-xs text-gray-500">
+              File will open directly in Excel (UTF-8 compatible)
+            </p>
+            {metricsNotFullyLoaded && (
+              <p className="text-xs text-amber-600 mt-1">
+                Attendee metrics still loading — computed fields may be incomplete
+              </p>
+            )}
+          </div>
           <div className="flex gap-3">
             <Button variant="outline" onClick={onClose}>
               Cancel

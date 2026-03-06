@@ -45,6 +45,18 @@ export const ALL_CSV_COLUMNS: CSVColumn[] = [
   { key: 'hasCampaignCode', header: 'Has Campaign Code', description: 'Whether campaign code is set', defaultSelected: false },
   // Links
   { key: 'on24Url', header: 'On24 Edit URL', description: 'Direct link to edit in On24', defaultSelected: false },
+  // Attendee-derived metrics
+  { key: 'am_attendeeCount', header: 'Attendees (computed)', description: 'Count from attendee endpoint', defaultSelected: false },
+  { key: 'am_avgEngagementScore', header: 'Avg Engagement (computed)', description: 'Mean engagement from attendees', defaultSelected: false },
+  { key: 'am_totalLiveHours', header: 'Live Hours (computed)', description: 'Total live viewing hours', defaultSelected: false },
+  { key: 'am_totalArchiveHours', header: 'Archive Hours (computed)', description: 'Total archive viewing hours', defaultSelected: false },
+  { key: 'am_totalViewingHours', header: 'Total Hours (computed)', description: 'Total viewing hours', defaultSelected: false },
+  { key: 'am_avgLiveMinutes', header: 'Avg Live Min', description: 'Avg live viewing per attendee', defaultSelected: false },
+  { key: 'am_avgArchiveMinutes', header: 'Avg Archive Min', description: 'Avg archive viewing per attendee', defaultSelected: false },
+  { key: 'am_totalQuestionsAsked', header: 'Questions (computed)', description: 'Total questions from attendees', defaultSelected: false },
+  { key: 'am_totalResourcesDownloaded', header: 'Resources DL (computed)', description: 'Total resource downloads', defaultSelected: false },
+  { key: 'am_totalPollsAnswered', header: 'Polls Answered (computed)', description: 'Total polls answered', defaultSelected: false },
+  { key: 'am_totalSurveysAnswered', header: 'Surveys Answered (computed)', description: 'Total surveys answered', defaultSelected: false },
 ];
 
 // Default columns (for backward compatibility)
@@ -75,6 +87,25 @@ function getColumnValue(webinar: WebinarSummary, key: string): string | number |
       if (!webinar.hasCampaignCode) issues.push('Missing campaign code');
       return issues.length > 0 ? issues.join('; ') : 'OK';
     default:
+      // Attendee-derived metrics
+      if (key.startsWith('am_')) {
+        const am = webinar.attendeeMetrics;
+        if (!am?.loaded) return '';
+        switch (key) {
+          case 'am_attendeeCount': return am.attendeeCount;
+          case 'am_avgEngagementScore': return am.avgEngagementScore.toFixed(1);
+          case 'am_totalLiveHours': return (am.totalLiveMinutes / 60).toFixed(2);
+          case 'am_totalArchiveHours': return (am.totalArchiveMinutes / 60).toFixed(2);
+          case 'am_totalViewingHours': return (am.totalViewingMinutes / 60).toFixed(2);
+          case 'am_avgLiveMinutes': return am.avgLiveMinutes.toFixed(1);
+          case 'am_avgArchiveMinutes': return am.avgArchiveMinutes.toFixed(1);
+          case 'am_totalQuestionsAsked': return am.totalQuestionsAsked;
+          case 'am_totalResourcesDownloaded': return am.totalResourcesDownloaded;
+          case 'am_totalPollsAnswered': return am.totalPollsAnswered;
+          case 'am_totalSurveysAnswered': return am.totalSurveysAnswered;
+          default: return '';
+        }
+      }
       const value = webinar[key as keyof WebinarSummary];
       if (value === undefined || value === null) {
         return '';

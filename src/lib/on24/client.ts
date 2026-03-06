@@ -5,7 +5,6 @@ import {
   On24EventAnalytics,
   On24PollResponse,
   On24SurveyResponse,
-  On24Question,
   On24ResourceDownload,
   On24CTAClick,
 } from '@/types/on24';
@@ -24,6 +23,10 @@ interface ListEventsFilters {
   pageSize?: number;
   page?: number;
 }
+
+const DEFAULT_PAGE_SIZE = 100;
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 1000;
 
 export class On24Client {
   private clientId: string;
@@ -52,18 +55,82 @@ export class On24Client {
       ...(body && { 'content-type': 'application/json' }),
     };
 
-    const response = await fetch(url, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const response = await fetch(url, {
+          method,
+          headers,
+          body: body ? JSON.stringify(body) : undefined,
+        });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`On24 API Error: ${response.status} - ${errorText}`);
+        if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
+          // Rate limited or server error — retry with backoff
+          const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          lastError = new Error(`On24 API Error: ${response.status}`);
+          continue;
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`On24 API Error: ${response.status} - ${errorText}`);
+        }
+
+        return response.json();
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt < MAX_RETRIES - 1) {
+          const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    throw lastError || new Error('Request failed after retries');
+  }
+
+  // Fetch all pages of a paginated list endpoint
+  private async requestAllPages<T>(
+    baseEndpoint: string,
+    extractItems: (response: unknown) => T[],
+    pageSize: number = DEFAULT_PAGE_SIZE,
+  ): Promise<T[]> {
+    const MAX_PAGES = 50; // Safety limit: 50 pages = up to 5000 items
+    const allItems: T[] = [];
+    let page = 0;
+    let prevCount = -1;
+
+    while (page < MAX_PAGES) {
+      const separator = baseEndpoint.includes('?') ? '&' : '?';
+      const endpoint = `${baseEndpoint}${separator}pageSize=${pageSize}&page=${page}`;
+      const response = await this.request<unknown>(endpoint);
+      const items = extractItems(response);
+
+      // If we got 0 items, we're done
+      if (items.length === 0) break;
+
+      // Detect API ignoring pagination: if page > 0 and we got same count as
+      // first page, the API likely doesn't support paging — just use first page
+      if (page > 0 && items.length === prevCount) {
+        // Check if first item looks like a duplicate (same data as page 0)
+        // by comparing JSON of first item
+        const firstNewItem = JSON.stringify(items[0]);
+        const firstExistingItem = allItems.length > 0 ? JSON.stringify(allItems[0]) : null;
+        if (firstNewItem === firstExistingItem) {
+          // API is returning the same data — stop paginating
+          break;
+        }
+      }
+
+      prevCount = items.length;
+      allItems.push(...items);
+
+      // If we got fewer items than pageSize, we've reached the last page
+      if (items.length < pageSize) break;
+      page++;
     }
 
-    return response.json();
+    return allItems;
   }
 
   // Event Methods
@@ -72,19 +139,15 @@ export class On24Client {
     if (filters?.startDate) params.append('startDate', filters.startDate);
     if (filters?.endDate) params.append('endDate', filters.endDate);
     if (filters?.status) params.append('status', filters.status);
-    if (filters?.pageSize) params.append('pageSize', filters.pageSize.toString());
-    if (filters?.page) params.append('page', filters.page.toString());
 
     const queryString = params.toString();
-    const endpoint = `/event${queryString ? `?${queryString}` : ''}`;
+    const baseEndpoint = `/event${queryString ? `?${queryString}` : ''}`;
 
-    const response = await this.request<{ events: On24Event[] } | On24Event[]>(endpoint);
-
-    // Handle different response formats
-    if (Array.isArray(response)) {
-      return response;
-    }
-    return response.events || [];
+    return this.requestAllPages<On24Event>(baseEndpoint, (response) => {
+      if (Array.isArray(response)) return response;
+      const obj = response as Record<string, unknown>;
+      return (obj.events as On24Event[]) || [];
+    });
   }
 
   async getEvent(eventId: number): Promise<On24Event> {
@@ -100,25 +163,24 @@ export class On24Client {
     if (filters?.partnerref) params.append('partnerref', filters.partnerref);
 
     const queryString = params.toString();
-    const endpoint = `/event/${eventId}/registrant${queryString ? `?${queryString}` : ''}`;
+    const baseEndpoint = `/event/${eventId}/registrant${queryString ? `?${queryString}` : ''}`;
 
-    const response = await this.request<{ registrants: On24Registrant[] } | On24Registrant[]>(endpoint);
-
-    if (Array.isArray(response)) {
-      return response;
-    }
-    return response.registrants || [];
+    return this.requestAllPages<On24Registrant>(baseEndpoint, (response) => {
+      if (Array.isArray(response)) return response;
+      const obj = response as Record<string, unknown>;
+      return (obj.registrants as On24Registrant[]) || [];
+    });
   }
 
   async listAttendees(eventId: number): Promise<On24Attendee[]> {
-    const response = await this.request<{ attendees: On24Attendee[] } | On24Attendee[]>(
-      `/event/${eventId}/attendee`
+    return this.requestAllPages<On24Attendee>(
+      `/event/${eventId}/attendee`,
+      (response) => {
+        if (Array.isArray(response)) return response;
+        const obj = response as Record<string, unknown>;
+        return (obj.attendees as On24Attendee[]) || [];
+      },
     );
-
-    if (Array.isArray(response)) {
-      return response;
-    }
-    return response.attendees || [];
   }
 
   // Analytics Methods
@@ -146,13 +208,10 @@ export class On24Client {
   // Interaction Data Methods
   async getPollResponses(eventId: number): Promise<On24PollResponse[]> {
     try {
-      const response = await this.request<{ polls: On24PollResponse[] } | On24PollResponse[]>(
-        `/event/${eventId}/poll`
-      );
-      if (Array.isArray(response)) {
-        return response;
-      }
-      return response.polls || [];
+      // /poll returns {eventid, polls: [...]}
+      const response = await this.request<Record<string, unknown>>(`/event/${eventId}/poll`);
+      const items = (response.polls as On24PollResponse[]) || [];
+      return items;
     } catch {
       return [];
     }
@@ -160,41 +219,24 @@ export class On24Client {
 
   async getSurveyResponses(eventId: number): Promise<On24SurveyResponse[]> {
     try {
-      const response = await this.request<{ surveys: On24SurveyResponse[] } | On24SurveyResponse[]>(
-        `/event/${eventId}/survey`
-      );
-      if (Array.isArray(response)) {
-        return response;
-      }
-      return response.surveys || [];
+      // /survey returns {eventid, surveys: [...]}
+      const response = await this.request<Record<string, unknown>>(`/event/${eventId}/survey`);
+      const items = (response.surveys as On24SurveyResponse[]) || [];
+      return items;
     } catch {
       return [];
     }
   }
 
-  async getQuestions(eventId: number): Promise<On24Question[]> {
-    try {
-      const response = await this.request<{ questions: On24Question[] } | On24Question[]>(
-        `/event/${eventId}/question`
-      );
-      if (Array.isArray(response)) {
-        return response;
-      }
-      return response.questions || [];
-    } catch {
-      return [];
-    }
-  }
+  // Note: /question endpoint returns 404. Q&A data is not available via the On24 API.
+  // Attendee records include an `askedquestions` count field.
 
   async getResourceDownloads(eventId: number): Promise<On24ResourceDownload[]> {
     try {
-      const response = await this.request<{ resources: On24ResourceDownload[] } | On24ResourceDownload[]>(
-        `/event/${eventId}/resource`
-      );
-      if (Array.isArray(response)) {
-        return response;
-      }
-      return response.resources || [];
+      // /resource returns {eventid, totalresources, resourcesviewed: [...]}
+      const response = await this.request<Record<string, unknown>>(`/event/${eventId}/resource`);
+      const items = (response.resourcesviewed as On24ResourceDownload[]) || [];
+      return items;
     } catch {
       return [];
     }
@@ -202,17 +244,17 @@ export class On24Client {
 
   async getCTAClicks(eventId: number): Promise<On24CTAClick[]> {
     try {
-      const response = await this.request<{ cta: On24CTAClick[] } | On24CTAClick[]>(
-        `/event/${eventId}/cta`
-      );
-      if (Array.isArray(response)) {
-        return response;
-      }
-      return response.cta || [];
+      // /cta returns {eventid, calltoactions: [...]}
+      const response = await this.request<Record<string, unknown>>(`/event/${eventId}/cta`);
+      const items = (response.calltoactions as On24CTAClick[]) || [];
+      return items;
     } catch {
       return [];
     }
   }
+
+  // Note: /reaction standalone endpoint returns 404, but reactions ARE included
+  // in the attendee records returned by /event/{eventId}/attendee as a `reactions` array.
 
   // Aggregated Data for Export
   async getFullEventData(eventId: number) {
@@ -223,7 +265,6 @@ export class On24Client {
       analytics,
       polls,
       surveys,
-      questions,
       resources,
       cta,
     ] = await Promise.all([
@@ -233,7 +274,6 @@ export class On24Client {
       this.getEventAnalytics(eventId),
       this.getPollResponses(eventId),
       this.getSurveyResponses(eventId),
-      this.getQuestions(eventId),
       this.getResourceDownloads(eventId),
       this.getCTAClicks(eventId),
     ]);
@@ -245,7 +285,6 @@ export class On24Client {
       analytics,
       polls,
       surveys,
-      questions,
       resources,
       cta,
     };

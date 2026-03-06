@@ -4,6 +4,8 @@ import { WebinarSummary, Speaker } from '@/types/webinar';
 import { On24Event } from '@/types/on24';
 import { calculatePerformanceRating } from '@/lib/analytics/recommendations';
 
+export const dynamic = 'force-dynamic';
+
 // Helper to generate date range batches (max 180 days each for On24 API)
 function generateDateBatches(startDateStr: string, endDateStr: string): { start: string; end: string }[] {
   const batches: { start: string; end: string }[] = [];
@@ -60,8 +62,10 @@ function eventToWebinarSummary(event: On24Event): WebinarSummary {
   const campaignName = event.campaigncode || '';
   const hasCampaignCode = Boolean(campaignName && campaignName.trim() !== '');
 
-  // Get test flag from istestevent
-  const isTest = event.istestevent === true;
+  // Get test flag from istestevent or title pattern
+  const isTest = event.istestevent === true
+    || /do not use/i.test(webinarName)
+    || /can be deleted/i.test(webinarName);
 
   // Get tags (already an array in API response)
   const tags: string[] = Array.isArray(event.tags) ? event.tags : [];

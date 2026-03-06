@@ -9,44 +9,42 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Ansell brand colors (from brandfetch.com/ansell.com)
+        // Ansell brand colors (from ansell.digital.css visual bible)
         ansell: {
-          // Primary - Teal/Persian Green
-          teal: '#00b09c',
-          'teal-dark': '#009485',
-          'teal-light': '#78b8a8',
-          // Primary - Dark Gray (Tapa)
-          dark: '#71706e',
-          'dark-light': '#8a8988',
-          'dark-darker': '#5a5958',
-          // Light Gray (Wild Sand)
-          light: '#f5f5f5',
-          // Gray scale
-          gray: {
-            50: '#f5f5f5',
-            100: '#ebebeb',
-            200: '#d6d6d6',
-            300: '#c2c2c2',
-            400: '#a3a3a3',
-            500: '#71706e',
-            600: '#5a5958',
-            700: '#424241',
-            800: '#2b2b2a',
-            900: '#141414',
-          },
+          // Primary blue
+          blue: '#0063AC',
+          // Teal
+          teal: '#00A28F',
+          'teal-dark': '#008778',
+          'teal-light': '#33b8a8',
+          // Dark (near-black charcoal)
+          dark: '#2C2A29',
+          'dark-light': '#4a4847',
+          'dark-darker': '#1a1918',
+          // Mid gray
+          gray: '#75787B',
+          // Light gray
+          'light-gray': '#BBBCBC',
+          // Light background
+          light: '#f5f6f7',
+          // Accent purple
+          purple: '#7030A0',
         },
       },
-      // Remove all rounded corners by default
+      gridTemplateColumns: {
+        '13': 'repeat(13, minmax(0, 1fr))',
+      },
+      // 8px base border radius scale
       borderRadius: {
         none: '0',
-        DEFAULT: '0',
-        sm: '0',
-        md: '0',
-        lg: '0',
-        xl: '0',
-        '2xl': '0',
-        '3xl': '0',
-        full: '9999px', // Keep full for circles/pills if needed
+        sm:   '4px',
+        DEFAULT: '8px',
+        md:   '8px',
+        lg:   '12px',
+        xl:   '16px',
+        '2xl': '20px',
+        '3xl': '24px',
+        full: '9999px',
       },
     },
   },

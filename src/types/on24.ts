@@ -141,24 +141,63 @@ export interface On24Registrant {
   company: string;
   createtimestamp: string;
   partnerref?: string;
+  // UTM tracking parameters (present when registration link included UTM query params)
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  utm_term?: string;
+  utm_content?: string;
+  // Some On24 accounts use no-underscore variants
+  utmsource?: string;
+  utmmedium?: string;
+  utmcampaign?: string;
   customFields?: Record<string, string>;
+  [key: string]: unknown;
 }
 
 export interface On24Attendee extends On24Registrant {
   attendeeid?: number;
+  // Engagement
   engagementScore?: number;
   engagementscore?: number;
   engagement?: number;
+  // Live viewing
   liveDuration?: number;
   liveduration?: number;
+  liveminutes?: number;
+  liveviewed?: number;
+  liveviewedduration?: number;
+  // Archive viewing
   ondemandDuration?: number;
   ondemandduration?: number;
+  archiveminutes?: number;
+  archiveviewed?: number;
+  ondemandviewedduration?: number;
+  // Total viewing
   totalDuration?: number;
   totalduration?: number;
+  // Cumulative
+  cumulativeliveminutes?: number;
+  cumulativearchiveminutes?: number;
+  // Media player
+  livemediaplayerminutes?: number;
+  archivemediaplayerminutes?: number;
+  // Interactions
+  askedquestions?: number;
+  resourcesdownloaded?: number;
+  answeredpolls?: number;
+  answeredsurveys?: number;
+  answeredsurveyquestions?: number;
+  attendeesessions?: number;
+  // Reactions (emoji responses during the event)
+  reactions?: Array<{ type: string; timefromstart: number; datetime: string }>;
+  // Resources downloaded during/after the event
+  resources?: Array<{ resourceid: number; resourceviewed: string; resourceviewedtimestamp: string }>;
+  // Dates
   firstViewDate?: string;
   lastViewDate?: string;
-  liveviewedduration?: number;
-  ondemandviewedduration?: number;
+  // Allow additional fields
+  [key: string]: unknown;
 }
 
 export interface On24EventAnalytics {
@@ -191,27 +230,20 @@ export interface On24SurveyResponse {
   responseTimestamp: string;
 }
 
-export interface On24Question {
-  questionid: number;
-  attendeeEmail: string;
-  questionText: string;
-  timestamp: string;
-  answered: boolean;
-}
-
 export interface On24ResourceDownload {
   resourceid: number;
-  resourceName: string;
-  attendeeEmail: string;
-  downloadTimestamp: string;
+  resourcename: string;
+  uniquedownloads: number;
+  totaldownloads: number;
 }
 
 export interface On24CTAClick {
   ctaid: number;
-  ctaName: string;
-  ctaType: string;
-  attendeeEmail: string;
-  clickTimestamp: string;
+  ctaname: string;
+  actiontype: string;
+  action: string;
+  totalclicks: number;
+  uniqueclicks: number;
 }
 
 export interface On24ApiResponse<T> {

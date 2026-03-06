@@ -1,23 +1,22 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { OverallStats, WebinarSummary } from '@/types/webinar';
+import { useMemo } from 'react';
+import { WebinarSummary } from '@/types/webinar';
 import { Card } from '@/components/ui/card';
 
 interface StatsOverviewProps {
-  stats: OverallStats;
-  webinars?: WebinarSummary[];
+  webinars: WebinarSummary[];
+  attendeeMetricsLoaded?: number;
+  attendeeMetricsTotal?: number;
+  startDate?: string; // ISO date e.g. "2025-11-01"
+  endDate?: string;
 }
 
-interface ChartDataPoint {
-  value: number;
-  label: string;
-}
+// ── Sparkline ─────────────────────────────────────────────────────────────────
 
-// Mini sparkline chart component with hover
-function MiniChart({ data, color, formatValue }: { data: ChartDataPoint[]; color: string; formatValue: (v: number) => string }) {
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+interface ChartPoint { value: number; label: string }
 
+function Sparkline({ data, color }: { data: ChartPoint[]; color: string }) {
   if (data.length < 2) return null;
 
   const values = data.map(d => d.value);
@@ -25,214 +24,262 @@ function MiniChart({ data, color, formatValue }: { data: ChartDataPoint[]; color
   const min = Math.min(...values);
   const range = max - min || 1;
 
-  const height = 40;
-  const width = 140;
-  const padding = 4;
-
-  const getX = (i: number) => padding + (i / (data.length - 1)) * (width - padding * 2);
-  const getY = (value: number) => padding + (height - padding * 2) - ((value - min) / range) * (height - padding * 2);
-
-  const points = data.map((d, i) => `${getX(i)},${getY(d.value)}`).join(' ');
-
-  // Calculate trend
-  const trend = data.length >= 2 ? values[values.length - 1] - values[0] : 0;
-  const trendPercent = values[0] !== 0 ? ((trend / values[0]) * 100).toFixed(0) : '0';
+  const W = 200, H = 26, P = 2;
+  const x = (i: number) => P + (i / (data.length - 1)) * (W - P * 2);
+  const y = (v: number) => P + (H - P * 2) - ((v - min) / range) * (H - P * 2);
+  const pts = data.map((d, i) => `${x(i)},${y(d.value)}`).join(' ');
 
   return (
-    <div className="mt-3">
-      <div className="relative">
-        <svg width={width} height={height} className="overflow-visible">
-          {/* Background grid lines */}
-          <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="#e5e7eb" strokeWidth="1" />
-
-          {/* Area fill */}
-          <polygon
-            points={`${padding},${height - padding} ${points} ${width - padding},${height - padding}`}
-            fill={`${color}20`}
-          />
-
-          {/* Line */}
-          <polyline
-            points={points}
-            fill="none"
-            stroke={color}
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-
-          {/* Interactive dots */}
-          {data.map((d, i) => (
-            <g key={i}>
-              <circle
-                cx={getX(i)}
-                cy={getY(d.value)}
-                r={hoveredIndex === i ? 5 : 3}
-                fill={hoveredIndex === i ? color : 'white'}
-                stroke={color}
-                strokeWidth="2"
-                className="cursor-pointer transition-all"
-                onMouseEnter={() => setHoveredIndex(i)}
-                onMouseLeave={() => setHoveredIndex(null)}
-              />
-            </g>
-          ))}
-        </svg>
-
-        {/* Tooltip */}
-        {hoveredIndex !== null && (
-          <div
-            className="absolute bg-gray-900 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-10"
-            style={{
-              left: getX(hoveredIndex),
-              top: -8,
-              transform: 'translateX(-50%) translateY(-100%)',
-            }}
-          >
-            <div className="font-medium">{formatValue(data[hoveredIndex].value)}</div>
-            <div className="text-gray-400">{data[hoveredIndex].label}</div>
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between mt-1">
-        <span className="text-[10px] text-gray-400">Last 6 months</span>
-        <span className={`text-xs font-medium ${trend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-          {trend >= 0 ? '↑' : '↓'} {Math.abs(Number(trendPercent))}%
-        </span>
-      </div>
+    <div className="mt-auto pt-2">
+      <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="overflow-visible">
+        <polygon
+          points={`${P},${H - P} ${pts} ${W - P},${H - P}`}
+          fill={`${color}18`}
+        />
+        <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+      </svg>
     </div>
   );
 }
 
-interface StatCardProps {
-  title: string;
-  value: string | number;
-  subtitle?: string;
-  icon: React.ReactNode;
-  chartData?: ChartDataPoint[];
-  chartColor?: string;
-  formatChartValue?: (v: number) => string;
-}
+// ── Stat card ─────────────────────────────────────────────────────────────────
 
-function StatCard({ title, value, subtitle, icon, chartData, chartColor = '#00b09c', formatChartValue = (v) => v.toFixed(1) }: StatCardProps) {
+function StatCard({
+  label,
+  value,
+  sub,
+  sparkData,
+  sparkColor = '#00b09c',
+  rangeLabel = '',
+  accent = 'none',
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  sparkData?: ChartPoint[];
+  sparkColor?: string;
+  rangeLabel?: string;
+  accent?: 'blue' | 'teal' | 'gray' | 'purple' | 'none';
+}) {
   return (
-    <Card className="p-4">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <p className="text-sm font-medium text-gray-500">{title}</p>
-          <p className="mt-1 text-2xl font-semibold text-gray-900">{value}</p>
-          {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
-          {chartData && chartData.length >= 2 && (
-            <MiniChart data={chartData} color={chartColor} formatValue={formatChartValue} />
-          )}
-        </div>
-        <div className="p-2 bg-ansell-teal/10 rounded-lg">{icon}</div>
-      </div>
+    <Card className="px-4 py-3 flex flex-col" accent={accent}>
+      <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-ansell-gray truncate">{label}</p>
+      <p className="mt-1 text-[22px] font-bold leading-none text-ansell-dark">{value}</p>
+      {sub && <p className="text-[11px] text-ansell-gray mt-0.5">{sub}</p>}
+      {sparkData && <Sparkline data={sparkData} color={sparkColor} />}
     </Card>
   );
 }
 
-export function StatsOverview({ stats, webinars = [] }: StatsOverviewProps) {
-  // Calculate monthly trends for last 6 months
-  const monthlyTrends = useMemo(() => {
-    if (webinars.length === 0) return { counts: [], engagements: [], attendances: [] };
+// ── Metric pill ───────────────────────────────────────────────────────────────
 
-    const now = new Date();
-    const sixMonthsAgo = new Date(now);
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+function MetricPill({
+  label,
+  value,
+  loading,
+}: {
+  label: string;
+  value: number;
+  loading?: boolean;
+}) {
+  return (
+    <div className="px-4 py-3 bg-white" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+      <div className="text-[18px] font-bold text-ansell-dark leading-tight">
+        {loading && value === 0 ? (
+          <span className="text-gray-300">—</span>
+        ) : (
+          value.toLocaleString()
+        )}
+      </div>
+      <div className="text-[11px] font-medium uppercase tracking-[0.05em] text-ansell-gray">{label}</div>
+    </div>
+  );
+}
 
-    // Group webinars by month
-    const monthlyData: Map<string, { count: number; totalEngagement: number; totalAttendance: number; webinarCount: number; label: string }> = new Map();
+// ── Trend bucketing ────────────────────────────────────────────────────────────
 
-    // Initialize last 6 months
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now);
-      d.setMonth(d.getMonth() - i);
+function buildTrendData(
+  webinars: WebinarSummary[],
+  startDate: string | undefined,
+  endDate: string | undefined,
+) {
+  const now = new Date();
+  const end = endDate ? new Date(endDate) : now;
+  const start = startDate ? new Date(startDate) : (() => { const d = new Date(now); d.setDate(d.getDate() - 30); return d; })();
+
+  const daysDiff = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86_400_000));
+
+  // Adaptive granularity
+  const gran: 'day' | 'week' | 'month' =
+    daysDiff <= 31 ? 'day' : daysDiff <= 90 ? 'week' : 'month';
+
+  type Bucket = { count: number; reg: number; att: number; label: string };
+  const map = new Map<string, Bucket>();
+
+  if (gran === 'day') {
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const key = d.toISOString().split('T')[0];
+      map.set(key, { count: 0, reg: 0, att: 0, label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) });
+    }
+    for (const w of webinars) {
+      if (!w.startDateTime) continue;
+      const key = new Date(w.startDateTime).toISOString().split('T')[0];
+      const b = map.get(key);
+      if (b) { b.count++; b.reg += w.eventAnalytics?.totalRegistrants ?? w.totalRegistrations ?? 0; b.att += w.eventAnalytics?.totalAttendees ?? w.totalAttendees ?? 0; }
+    }
+  } else if (gran === 'week') {
+    // Build week-start keys
+    const weekStarts: Date[] = [];
+    let ws = new Date(start);
+    while (ws <= end) { weekStarts.push(new Date(ws)); ws = new Date(ws); ws.setDate(ws.getDate() + 7); }
+    for (const ws of weekStarts) {
+      map.set(ws.toISOString().split('T')[0], { count: 0, reg: 0, att: 0, label: ws.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) });
+    }
+    for (const w of webinars) {
+      if (!w.startDateTime) continue;
+      const d = new Date(w.startDateTime);
+      // Find bucket: latest weekStart <= d
+      let key = '';
+      for (const ws of weekStarts) {
+        if (d >= ws) key = ws.toISOString().split('T')[0]; else break;
+      }
+      const b = map.get(key);
+      if (b) { b.count++; b.reg += w.eventAnalytics?.totalRegistrants ?? w.totalRegistrations ?? 0; b.att += w.eventAnalytics?.totalAttendees ?? w.totalAttendees ?? 0; }
+    }
+  } else {
+    const cur = new Date(start.getFullYear(), start.getMonth(), 1);
+    while (cur <= end) {
+      const key = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}`;
+      map.set(key, { count: 0, reg: 0, att: 0, label: cur.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }) });
+      cur.setMonth(cur.getMonth() + 1);
+    }
+    for (const w of webinars) {
+      if (!w.startDateTime) continue;
+      const d = new Date(w.startDateTime);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-      monthlyData.set(key, { count: 0, totalEngagement: 0, totalAttendance: 0, webinarCount: 0, label });
+      const b = map.get(key);
+      if (b) { b.count++; b.reg += w.eventAnalytics?.totalRegistrants ?? w.totalRegistrations ?? 0; b.att += w.eventAnalytics?.totalAttendees ?? w.totalAttendees ?? 0; }
+    }
+  }
+
+  const buckets = Array.from(map.values());
+
+  return {
+    counts:        buckets.map(v => ({ value: v.count, label: v.label })),
+    registrations: buckets.map(v => ({ value: v.reg,   label: v.label })),
+    attendees:     buckets.map(v => ({ value: v.att,   label: v.label })),
+  };
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+
+export function StatsOverview({
+  webinars,
+  attendeeMetricsLoaded = 0,
+  attendeeMetricsTotal = 0,
+  startDate,
+  endDate,
+}: StatsOverviewProps) {
+  const metricsLoading = attendeeMetricsLoaded < attendeeMetricsTotal;
+
+  // ── Aggregate totals ──────────────────────────────────────────────────────
+  const totals = useMemo(() => {
+    let registrations = 0, attendees = 0, noShows = 0;
+    let liveMinutes = 0, archiveMinutes = 0;
+    let questionsAsked = 0, surveysAnswered = 0, pollsAnswered = 0, resourcesDownloaded = 0;
+
+    for (const w of webinars) {
+      const ea = w.eventAnalytics;
+      const am = w.attendeeMetrics;
+      registrations += ea?.totalRegistrants ?? w.totalRegistrations ?? 0;
+      attendees     += ea?.totalAttendees   ?? w.totalAttendees   ?? 0;
+      noShows       += ea?.noShowCount ?? 0;
+      liveMinutes   += ea?.totalCumulativeLiveMinutes    ?? 0;
+      archiveMinutes += ea?.totalCumulativeArchiveMinutes ?? 0;
+      if (am?.loaded) {
+        questionsAsked     += am.totalQuestionsAsked  ?? 0;
+        surveysAnswered    += am.totalSurveysAnswered  ?? 0;
+        pollsAnswered      += am.totalPollsAnswered    ?? 0;
+        resourcesDownloaded += am.totalResourcesDownloaded ?? 0;
+      }
     }
 
-    // Populate with webinar data
-    webinars.forEach(w => {
-      if (!w.startDateTime) return;
-      const date = new Date(w.startDateTime);
-      if (date < sixMonthsAgo) return;
-
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const existing = monthlyData.get(key);
-      if (existing) {
-        existing.count++;
-        existing.totalEngagement += w.engagementScore || 0;
-        const attendanceRate = w.totalRegistrations > 0
-          ? (w.totalAttendees / w.totalRegistrations) * 100
-          : 0;
-        existing.totalAttendance += Math.min(attendanceRate, 100);
-        existing.webinarCount++;
-      }
-    });
-
-    // Convert to arrays with labels
-    const sorted = Array.from(monthlyData.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-
-    return {
-      counts: sorted.map(([, v]) => ({ value: v.count, label: v.label })),
-      engagements: sorted.map(([, v]) => ({ value: v.webinarCount > 0 ? v.totalEngagement / v.webinarCount : 0, label: v.label })),
-      attendances: sorted.map(([, v]) => ({ value: v.webinarCount > 0 ? v.totalAttendance / v.webinarCount : 0, label: v.label })),
-    };
+    const totalViewingHours = Math.round((liveMinutes + archiveMinutes) / 60);
+    const attendanceRate = registrations > 0 ? (attendees / registrations) * 100 : 0;
+    return { registrations, attendees, noShows, totalViewingHours, attendanceRate, questionsAsked, surveysAnswered, pollsAnswered, resourcesDownloaded };
   }, [webinars]);
 
+  // ── Trend data (range-aware) ───────────────────────────────────────────────
+  const trends = useMemo(
+    () => buildTrendData(webinars, startDate, endDate),
+    [webinars, startDate, endDate],
+  );
+
+  const fmtNum = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+
+  const noShowRate = totals.attendees + totals.noShows > 0
+    ? Math.round((totals.noShows / (totals.attendees + totals.noShows)) * 100)
+    : 0;
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-      <StatCard
-        title="Total Webinars"
-        value={stats.totalWebinars}
-        chartData={monthlyTrends.counts}
-        chartColor="#00b09c"
-        formatChartValue={(v) => `${Math.round(v)} webinars`}
-        icon={
-          <svg className="h-6 w-6 text-ansell-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
-        }
-      />
-      <StatCard
-        title="Avg Engagement Score"
-        value={stats.avgEngagementScore.toFixed(1)}
-        subtitle="Out of 10"
-        chartData={monthlyTrends.engagements}
-        chartColor="#00b09c"
-        formatChartValue={(v) => `${v.toFixed(1)} / 10`}
-        icon={
-          <svg className="h-6 w-6 text-ansell-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-        }
-      />
-      <StatCard
-        title="Avg Attendance Rate"
-        value={`${Math.min(stats.avgAttendanceRate, 100).toFixed(1)}%`}
-        subtitle="Registrations to attendees"
-        chartData={monthlyTrends.attendances}
-        chartColor="#00b09c"
-        formatChartValue={(v) => `${v.toFixed(1)}%`}
-        icon={
-          <svg className="h-6 w-6 text-ansell-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-          </svg>
-        }
-      />
-      <StatCard
-        title="Top Performer"
-        value={stats.topPerformer.length > 25 ? stats.topPerformer.slice(0, 25) + '...' : stats.topPerformer}
-        subtitle="Highest engagement"
-        icon={
-          <svg className="h-6 w-6 text-ansell-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-          </svg>
-        }
-      />
+    <div className="space-y-3">
+      {/* Row 1: core counts */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard
+          label="Webinars"
+          value={webinars.length}
+          sparkData={trends.counts}
+          sparkColor="#0063AC"
+          accent="blue"
+        />
+        <StatCard
+          label="Registrations"
+          value={fmtNum(totals.registrations)}
+          sparkData={trends.registrations}
+          sparkColor="#00A28F"
+          accent="teal"
+        />
+        <StatCard
+          label="Attendees"
+          value={fmtNum(totals.attendees)}
+          sub={`${totals.attendanceRate.toFixed(1)}% attendance rate`}
+          sparkData={trends.attendees}
+          sparkColor="#0063AC"
+          accent="blue"
+        />
+        <StatCard
+          label="Total Viewing Hours"
+          value={totals.totalViewingHours.toLocaleString()}
+          sub={noShowRate > 0 ? `${noShowRate}% no-show rate` : undefined}
+          accent="purple"
+        />
+      </div>
+
+      {/* Row 2: interaction metrics */}
+      <div className="bg-white p-4" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.08)', borderTop: '5px solid #75787B' }}>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-ansell-gray">Engagement</span>
+          {metricsLoading ? (
+            <span className="text-[11px] text-gray-400 flex items-center gap-1.5">
+              <span className="inline-block h-2 w-2 rounded-full bg-ansell-teal animate-pulse" />
+              Loading {attendeeMetricsLoaded}/{attendeeMetricsTotal} events
+            </span>
+          ) : attendeeMetricsTotal > 0 ? (
+            <span className="text-[11px] text-emerald-600">All metrics loaded</span>
+          ) : null}
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <MetricPill label="Q&A questions"     value={totals.questionsAsked}       loading={metricsLoading} />
+          <MetricPill label="Survey responses"  value={totals.surveysAnswered}      loading={metricsLoading} />
+          <MetricPill label="Poll responses"    value={totals.pollsAnswered}        loading={metricsLoading} />
+          <MetricPill label="Resource downloads" value={totals.resourcesDownloaded} loading={metricsLoading} />
+        </div>
+        {metricsLoading && (
+          <p className="mt-2 text-[10px] text-gray-400">
+            Interaction counts update as attendee data loads. Stats reflect {attendeeMetricsLoaded} of {attendeeMetricsTotal} events.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

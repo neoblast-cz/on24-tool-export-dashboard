@@ -42,3 +42,6 @@ next-env.d.ts
 
 # OS
 Thumbs.db
+
+# Local deployment notes (contain internal hostnames/credentials)
+DEPLOY-PI.txt

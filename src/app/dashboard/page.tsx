@@ -1,452 +1,711 @@
 'use client';
 
-import { useEffect, useCallback, useState, useMemo } from 'react';
-import { useWebinarStore, isCacheValid, formatTimestamp } from '@/store/webinar-store';
-import { StatsOverview } from '@/components/dashboard/stats-overview';
-import { WebinarList } from '@/components/dashboard/webinar-list';
-import { Recommendations } from '@/components/dashboard/recommendations';
-import { PerformanceChart } from '@/components/dashboard/performance-chart';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { WebinarSummary, AttendeeMetrics } from '@/types/webinar';
+import { useWebinarStore } from '@/store/webinar-store';
+import { EventTable, EventTableRow, ExpandedPoll, ExpandedSurveyQuestion, ExpandedResource, ExpandedCTA, ExpandedPartnerRef } from '@/components/shared/event-table';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
-import { LoadingState } from '@/components/ui/spinner';
-import { getOverallRecommendations } from '@/lib/analytics/recommendations';
-import { DashboardData } from '@/types/webinar';
-import { ExportModal } from '@/components/dashboard/export-modal';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface DashboardRichDetail {
+  pollDetails: ExpandedPoll[];
+  surveyDetails: ExpandedSurveyQuestion[];
+  resourceDetails: ExpandedResource[];
+  ctaDetails: ExpandedCTA[];
+  partnerRefStats: ExpandedPartnerRef[];
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function downloadFile(content: string, filename: string, type: string) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function escapeCSV(val: string): string {
+  if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+    return `"${val.replace(/"/g, '""')}"`;
+  }
+  return val;
+}
+
+function formatDate(dateStr: string): string {
+  if (!dateStr) return '-';
+  try {
+    return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  } catch { return dateStr; }
+}
+
+// ── Date presets ──────────────────────────────────────────────────────────────
+
+function getDatePresets(): { label: string; start: string; end: string }[] {
+  const today = new Date();
+  const fmt = (d: Date) => d.toISOString().split('T')[0];
+  const daysAgo = (n: number) => { const d = new Date(today); d.setDate(d.getDate() - n); return d; };
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  const qStart = new Date(year, Math.floor(month / 3) * 3, 1);
+  const lastQStart = new Date(qStart); lastQStart.setMonth(lastQStart.getMonth() - 3);
+  const lastQEnd = new Date(qStart); lastQEnd.setDate(lastQEnd.getDate() - 1);
+  return [
+    { label: 'Last 30 days',  start: fmt(daysAgo(30)),  end: fmt(today) },
+    { label: 'Last 60 days',  start: fmt(daysAgo(60)),  end: fmt(today) },
+    { label: 'Last 90 days',  start: fmt(daysAgo(90)),  end: fmt(today) },
+    { label: 'This quarter',  start: fmt(qStart),        end: fmt(today) },
+    { label: 'Last quarter',  start: fmt(lastQStart),    end: fmt(lastQEnd) },
+    { label: 'This year',     start: fmt(new Date(year, 0, 1)),          end: fmt(today) },
+    { label: 'Last year',     start: fmt(new Date(year - 1, 0, 1)),      end: fmt(new Date(year - 1, 11, 31)) },
+    { label: 'This FY',       start: fmt(month >= 6 ? new Date(year, 6, 1) : new Date(year - 1, 6, 1)), end: fmt(today) },
+    { label: 'Last FY',       start: fmt(month >= 6 ? new Date(year - 1, 6, 1) : new Date(year - 2, 6, 1)), end: fmt(month >= 6 ? new Date(year, 5, 30) : new Date(year - 1, 5, 30)) },
+  ];
+}
+
+const DATE_PRESETS = getDatePresets();
+const DEFAULT_PRESET = DATE_PRESETS[0]; // Last 30 days
+
+// ── Event type color helpers (for filter chips) ───────────────────────────────
+
+const CHIP_COLORS: Record<string, { bg: string; border: string; text: string; dot: string }> = {
+  'webpage':    { bg: 'bg-orange-100', border: 'border-orange-300', text: 'text-orange-800', dot: 'bg-orange-400' },
+  'video':      { bg: 'bg-sky-100',    border: 'border-sky-300',    text: 'text-sky-800',    dot: 'bg-sky-400'    },
+  'experience': { bg: 'bg-pink-100',   border: 'border-pink-300',   text: 'text-pink-800',   dot: 'bg-pink-400'   },
+};
+const DEFAULT_CHIP = { bg: 'bg-violet-100', border: 'border-violet-300', text: 'text-violet-800', dot: 'bg-violet-400' };
+function chipColor(type: string) { return CHIP_COLORS[type.toLowerCase()] ?? DEFAULT_CHIP; }
+
+// ── Row adapter ───────────────────────────────────────────────────────────────
+
+function toTableRow(
+  w: WebinarSummary,
+  richDetail: DashboardRichDetail | 'loading' | undefined,
+  ctaCount: number | undefined,
+  onExportImage: () => void,
+  onPrint: () => void,
+): EventTableRow {
+  const am = w.attendeeMetrics;
+  const ea = w.eventAnalytics;
+  const metricsLoading = !am?.loaded;
+  const detailLoading = richDetail === 'loading';
+
+  const row: EventTableRow = {
+    eventId: w.eventId,
+    webinarName: w.webinarName,
+    displayDate: formatDate(w.startDateTime),
+    startDateTimeRaw: w.startDateTime,
+    eventType: w.eventType || '',
+    isTest: w.isTest ?? false,
+    campaignCode: w.hasCampaignCode ? w.campaignName : undefined,
+    hasCampaignCode: w.hasCampaignCode ?? false,
+    tags: w.tags || [],
+    speakers: w.speakers || [],
+    duration: w.duration,
+    language: w.language,
+    category: w.category,
+    timezone: w.timezone,
+    registrants: ea?.totalRegistrants ?? w.totalRegistrations,
+    attendees: am?.loaded ? am.attendeeCount : (ea?.totalAttendees ?? w.totalAttendees),
+    engagementScore: am?.loaded ? am.avgEngagementScore : w.engagementScore,
+    qa: am?.loaded ? am.totalQuestionsAsked : (w.questionsAsked || 0),
+    polls: am?.loaded ? am.totalPollsAnswered : (w.pollResponses || 0),
+    surveys: am?.loaded ? am.totalSurveysAnswered : (w.surveyResponses || 0),
+    dl: am?.loaded ? am.totalResourcesDownloaded : (ea?.uniqueAttendeeResourceDownloads ?? w.resourcesDownloaded ?? 0),
+    liveAttendees: am?.loaded ? am.liveViewerCount : undefined,
+    ondemandAttendees: am?.loaded ? am.archiveViewerCount : undefined,
+    noShows: ea?.noShowCount != null ? ea.noShowCount : undefined,
+    totalLiveMinutes: am?.loaded ? am.totalLiveMinutes : (ea?.totalCumulativeLiveMinutes ?? undefined),
+    totalArchiveMinutes: am?.loaded ? am.totalArchiveMinutes : (ea?.totalCumulativeArchiveMinutes ?? undefined),
+    totalMinutes: am?.loaded ? am.totalViewingMinutes : undefined,
+    avgLiveMinutes: am?.loaded ? am.avgLiveMinutes : undefined,
+    avgArchiveMinutes: am?.loaded ? am.avgArchiveMinutes : undefined,
+    avgEngagementScore: am?.loaded ? am.avgEngagementScore : undefined,
+    cta: ctaCount,
+    metricsLoading,
+    detailLoading,
+    promotionalSummary: w.promotionalSummary || undefined,
+    audienceUrl: w.audienceUrl,
+    reportUrl: w.reportUrl,
+    onExportImage,
+    onPrint,
+    expandedNote: metricsLoading && !detailLoading ? 'Attendee metrics loading…' : undefined,
+  };
+
+  if (richDetail && richDetail !== 'loading') {
+    row.pollDetails = richDetail.pollDetails;
+    row.surveyDetails = richDetail.surveyDetails;
+    row.resourceDetails = richDetail.resourceDetails;
+    row.ctaDetails = richDetail.ctaDetails;
+    row.partnerRefStats = richDetail.partnerRefStats;
+    // Rich detail gives per-CTA breakdown; use its total (may be more precise)
+    const detailCta = richDetail.ctaDetails.reduce((s, c) => s + c.totalClicks, 0);
+    row.cta = detailCta > 0 ? detailCta : (ctaCount ?? detailCta);
+  }
+
+  return row;
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const WEBINAR_TYPES = new Set(['webcast', 'on demand', 'live video and audio']);
+const METRICS_BATCH_SIZE = 20;
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const [mounted, setMounted] = useState(false);
-  const [showTestWebinars, setShowTestWebinars] = useState(false);
-  const [showExportModal, setShowExportModal] = useState(false);
-  // Filter states
+  const { setLiveWebinars, setLiveCtaCounts, filterStartDate, filterEndDate, filterVersion } = useWebinarStore();
+
+  // Date range — sourced from shared store (set via global filter strip in header)
+  const startDate = filterStartDate || DEFAULT_PRESET.start;
+  const endDate   = filterEndDate   || DEFAULT_PRESET.end;
+
+  // Data
+  const [webinars, setWebinars] = useState<WebinarSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [progress, setProgress] = useState('');
+
+  // Attendee metrics (progressive)
+  const [attendeeMetricsMap, setAttendeeMetricsMap] = useState<Map<number, AttendeeMetrics>>(new Map());
+  const [metricsLoaded, setMetricsLoaded] = useState(0);
+  const [metricsTotal, setMetricsTotal] = useState(0);
+
+  // CTA counts (progressive, parallel to attendee metrics)
+  const [ctaCountsMap, setCtaCountsMap] = useState<Map<number, number>>(new Map());
+
+  // Rich event detail (lazy-loaded on row expand)
+  const [detailsMap, setDetailsMap] = useState<Map<number, DashboardRichDetail | 'loading'>>(new Map());
+
+  // Post-load filters
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState<'all' | '30' | '90' | '180' | '365' | '730'>('all');
+  const [excludedEventTypes, setExcludedEventTypes] = useState<Set<string>>(new Set());
+  const [showTests, setShowTests] = useState(false);
   const [missingCampaignOnly, setMissingCampaignOnly] = useState(false);
   const [tagFilters, setTagFilters] = useState<string[]>([]);
-  const {
-    dashboardData,
-    isLoading,
-    error,
-    lastRefreshed,
-    setDashboardData,
-    setLoading,
-    setError,
-    clearCache,
-  } = useWebinarStore();
 
-  const cacheValid = isCacheValid(lastRefreshed);
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const metricsAbortRef = useRef<AbortController | null>(null);
+  const ctaAbortRef = useRef<AbortController | null>(null);
 
-  // Prevent hydration mismatch from localStorage
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // ── Fetch events ────────────────────────────────────────────────────────────
 
-  const fetchWebinarData = useCallback(async () => {
+  const fetchEvents = async (start: string, end: string) => {
+    fetchAbortRef.current?.abort();
+    metricsAbortRef.current?.abort();
+    ctaAbortRef.current?.abort();
+
+    const abort = new AbortController();
+    fetchAbortRef.current = abort;
+
     setLoading(true);
-    setError(null);
+    setError('');
+    setProgress('Loading events…');
+    setWebinars([]);
+    setAttendeeMetricsMap(new Map());
+    setCtaCountsMap(new Map());
+    setDetailsMap(new Map());
+    setMetricsLoaded(0);
+    setMetricsTotal(0);
+    setTagFilters([]);
 
     try {
-      // Calculate date range (last 3 years)
-      const endDate = new Date().toISOString().split('T')[0];
-      const startDate = new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0];
-
-      const response = await fetch(
-        `/api/on24/events?startDate=${startDate}&endDate=${endDate}`
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch webinar data');
+      const res = await fetch(`/api/on24/events?startDate=${start}&endDate=${end}`, {
+        signal: abort.signal,
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || 'Failed to fetch events');
       }
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Unknown error');
 
-      const result = await response.json();
+      const all: WebinarSummary[] = result.data?.webinars || [];
+      setWebinars(all);
+      setProgress(`${all.length} event${all.length !== 1 ? 's' : ''} loaded`);
 
-      if (result.success) {
-        setDashboardData(result.data as DashboardData);
-      } else {
-        throw new Error(result.error || 'Unknown error');
+      // Auto-exclude non-webinar types
+      const toExclude = new Set<string>();
+      for (const w of all) {
+        const t = (w.eventType || '').toLowerCase();
+        if (!WEBINAR_TYPES.has(t)) toExclude.add(w.eventType || '(unknown)');
+      }
+      setExcludedEventTypes(toExclude);
+
+      // Kick off attendee metrics + CTA counts in parallel
+      if (all.length > 0 && !abort.signal.aborted) {
+        loadAttendeeMetrics(all, abort.signal);
+        loadCtaCounts(all, abort.signal);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      if ((err as Error).name === 'AbortError') return;
+      setError(err instanceof Error ? err.message : 'Network error');
+      setProgress('');
+    } finally {
+      if (!abort.signal.aborted) setLoading(false);
     }
-  }, [setDashboardData, setLoading, setError]);
+  };
 
-  // Auto-fetch on mount if cache is invalid
+  // ── Load attendee metrics progressively ─────────────────────────────────────
+
+  const loadAttendeeMetrics = async (webinarList: WebinarSummary[], parentSignal: AbortSignal) => {
+    metricsAbortRef.current?.abort();
+    const abort = new AbortController();
+    metricsAbortRef.current = abort;
+
+    parentSignal.addEventListener('abort', () => abort.abort());
+
+    const ids = webinarList.map(w => w.eventId);
+    setMetricsTotal(ids.length);
+    setMetricsLoaded(0);
+
+    let loaded = 0;
+    for (let i = 0; i < ids.length; i += METRICS_BATCH_SIZE) {
+      if (abort.signal.aborted) break;
+      const batch = ids.slice(i, i + METRICS_BATCH_SIZE);
+      try {
+        const res = await fetch('/api/on24/attendee-metrics', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventIds: batch }),
+          signal: abort.signal,
+        });
+        if (res.ok) {
+          const { metrics } = await res.json() as { metrics: Record<string, AttendeeMetrics> };
+          setAttendeeMetricsMap(prev => {
+            const next = new Map(prev);
+            for (const [id, m] of Object.entries(metrics)) next.set(Number(id), m);
+            return next;
+          });
+        }
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') break;
+      }
+      loaded += batch.length;
+      setMetricsLoaded(Math.min(loaded, ids.length));
+    }
+  };
+
+  // ── Load CTA counts progressively ───────────────────────────────────────────
+
+  const loadCtaCounts = async (webinarList: WebinarSummary[], parentSignal: AbortSignal) => {
+    ctaAbortRef.current?.abort();
+    const abort = new AbortController();
+    ctaAbortRef.current = abort;
+
+    parentSignal.addEventListener('abort', () => abort.abort());
+
+    const ids = webinarList.map(w => w.eventId);
+
+    for (let i = 0; i < ids.length; i += METRICS_BATCH_SIZE) {
+      if (abort.signal.aborted) break;
+      const batch = ids.slice(i, i + METRICS_BATCH_SIZE);
+      try {
+        const res = await fetch('/api/on24/cta-counts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventIds: batch }),
+          signal: abort.signal,
+        });
+        if (res.ok) {
+          const { counts } = await res.json() as { counts: Record<string, number> };
+          setCtaCountsMap(prev => {
+            const next = new Map(prev);
+            for (const [id, n] of Object.entries(counts)) next.set(Number(id), n);
+            return next;
+          });
+        }
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') break;
+      }
+    }
+  };
+
+  // Fetch on mount and whenever the user applies a new date range from the global filter
   useEffect(() => {
-    if (!cacheValid && !isLoading && !dashboardData) {
-      fetchWebinarData();
+    fetchEvents(startDate, endDate);
+    return () => {
+      fetchAbortRef.current?.abort();
+      metricsAbortRef.current?.abort();
+      ctaAbortRef.current?.abort();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterVersion]);
+
+  // ── Derived data ────────────────────────────────────────────────────────────
+
+  const webinarsWithMetrics = useMemo(() =>
+    webinars.map(w => ({ ...w, attendeeMetrics: attendeeMetricsMap.get(w.eventId) })),
+    [webinars, attendeeMetricsMap]
+  );
+
+  // Sync enriched data to store so the Insights tab can read it
+  useEffect(() => {
+    if (webinarsWithMetrics.length > 0) setLiveWebinars(webinarsWithMetrics);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [webinarsWithMetrics]);
+
+  useEffect(() => {
+    if (ctaCountsMap.size > 0) setLiveCtaCounts(Object.fromEntries(ctaCountsMap));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctaCountsMap]);
+
+  const nonWebinarTypeCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const w of webinars) {
+      const t = w.eventType || '(unknown)';
+      if (!WEBINAR_TYPES.has(t.toLowerCase())) counts.set(t, (counts.get(t) || 0) + 1);
     }
-  }, [cacheValid, isLoading, dashboardData, fetchWebinarData]);
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  }, [webinars]);
 
-  // Apply all filters
-  const filteredWebinars = useMemo(() => {
-    if (!dashboardData) return [];
+  const testCount = useMemo(() => webinars.filter(w => w.isTest).length, [webinars]);
+  const missingCampaignCount = useMemo(() => webinars.filter(w => !w.hasCampaignCode).length, [webinars]);
 
-    return dashboardData.webinars.filter((w) => {
-      // Test webinar filter
-      if (!showTestWebinars && w.isTest) return false;
+  const filteredWebinars = useMemo(() => webinarsWithMetrics.filter(w => {
+    if (!showTests && w.isTest) return false;
+    if (excludedEventTypes.has(w.eventType || '(unknown)')) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      if (!w.webinarName?.toLowerCase().includes(q) &&
+          !w.campaignName?.toLowerCase().includes(q) &&
+          !w.eventId.toString().includes(q)) return false;
+    }
+    if (missingCampaignOnly && w.hasCampaignCode) return false;
+    if (tagFilters.length > 0) {
+      if (!w.tags) return false;
+      for (const tag of tagFilters) if (!w.tags.includes(tag)) return false;
+    }
+    return true;
+  }), [webinarsWithMetrics, showTests, excludedEventTypes, searchQuery, missingCampaignOnly, tagFilters]);
 
-      // Search filter
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        const matchesName = w.webinarName?.toLowerCase().includes(query);
-        const matchesCampaign = w.campaignName?.toLowerCase().includes(query);
-        const matchesId = w.eventId.toString().includes(query);
-        if (!matchesName && !matchesCampaign && !matchesId) return false;
+  const metricsLoading = metricsLoaded < metricsTotal;
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
+
+  const toggleExcludedType = (type: string) => {
+    setExcludedEventTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type); else next.add(type);
+      return next;
+    });
+  };
+
+  const toggleTagFilter = (tag: string) =>
+    setTagFilters(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+
+  // Lazy-load rich event detail when a row is expanded
+  const handleExpandRow = async (eventId: number) => {
+    if (detailsMap.has(eventId)) return; // already loading or loaded
+    setDetailsMap(prev => new Map(prev).set(eventId, 'loading'));
+    try {
+      const res = await fetch('/api/on24/export-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventIds: [eventId] }),
+      });
+      if (res.ok) {
+        const { data } = await res.json();
+        const event = data?.[0];
+        setDetailsMap(prev => new Map(prev).set(eventId, {
+          pollDetails: event?.polls || [],
+          surveyDetails: event?.surveys || [],
+          resourceDetails: event?.resources || [],
+          ctaDetails: event?.ctas || [],
+          partnerRefStats: event?.partnerRefStats || [],
+        }));
+      } else {
+        setDetailsMap(prev => { const next = new Map(prev); next.delete(eventId); return next; });
       }
+    } catch {
+      setDetailsMap(prev => { const next = new Map(prev); next.delete(eventId); return next; });
+    }
+  };
 
-      // Date filter
-      if (dateFilter !== 'all') {
-        const days = parseInt(dateFilter);
-        const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-        const webinarDate = new Date(w.startDateTime);
-        if (webinarDate < cutoffDate) return false;
-      }
+  const handleExportImage = async (eventId: number, eventName: string) => {
+    const el = document.getElementById(`event-details-${eventId}`);
+    if (!el) return;
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(el, { backgroundColor: '#ffffff', scale: 2 });
+      const slug = eventName.slice(0, 40).replace(/[^a-zA-Z0-9]+/g, '-').replace(/-$/, '');
+      const link = document.createElement('a');
+      link.download = `event-${eventId}-${slug}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (err) {
+      console.error('Failed to export image:', err);
+    }
+  };
 
-      // Missing campaign filter
-      if (missingCampaignOnly && w.hasCampaignCode) return false;
-
-      // Tag filter (must have ALL selected tags)
-      if (tagFilters.length > 0) {
-        if (!w.tags) return false;
-        for (const tag of tagFilters) {
-          if (!w.tags.includes(tag)) return false;
+  const handlePrintEvent = (eventId: number) => {
+    const el = document.getElementById(`event-details-${eventId}`);
+    if (!el) return;
+    el.setAttribute('data-print-target', 'true');
+    const style = document.createElement('style');
+    style.id = 'print-event-style';
+    style.textContent = `
+      @media print {
+        body * { visibility: hidden !important; }
+        [data-print-target="true"],
+        [data-print-target="true"] * { visibility: visible !important; }
+        [data-print-target="true"] {
+          position: absolute; left: 0; top: 0; width: 100%;
+          border: none !important; margin: 0 !important; padding: 16px !important;
         }
       }
+    `;
+    document.head.appendChild(style);
+    window.print();
+    el.removeAttribute('data-print-target');
+    style.remove();
+  };
 
-      return true;
+  const handleExportCSV = () => {
+    if (filteredWebinars.length === 0) return;
+    const headers = [
+      'Date', 'Event ID', 'Name', 'Campaign', 'Type', 'Duration (min)',
+      'Registrants', 'Attendees', 'No-Shows', 'Att Rate %',
+      'Live Attendees', 'On-Demand Attendees',
+      'Total Live Min', 'Total Archive Min', 'Total Min',
+      'Avg Live Min', 'Avg Archive Min', 'Avg Engagement',
+      'Q&A', 'Polls', 'Surveys', 'Downloads', 'Tags',
+    ];
+    const rows = filteredWebinars.map(w => {
+      const am = w.attendeeMetrics;
+      const ea = w.eventAnalytics;
+      const reg = ea?.totalRegistrants ?? w.totalRegistrations;
+      const att = am?.loaded ? am.attendeeCount : (ea?.totalAttendees ?? w.totalAttendees);
+      const attRate = reg > 0 ? ((att / reg) * 100).toFixed(1) : '';
+      return [
+        escapeCSV(formatDate(w.startDateTime)),
+        String(w.eventId),
+        escapeCSV(w.webinarName || ''),
+        escapeCSV(w.hasCampaignCode ? (w.campaignName || '') : ''),
+        escapeCSV(w.eventType || ''),
+        w.duration != null ? String(w.duration) : '',
+        String(reg),
+        String(att),
+        ea?.noShowCount != null ? String(ea.noShowCount) : '',
+        attRate,
+        am?.loaded ? String(am.liveViewerCount) : '',
+        am?.loaded ? String(am.archiveViewerCount) : '',
+        am?.loaded ? am.totalLiveMinutes.toFixed(0) : (ea?.totalCumulativeLiveMinutes != null ? String(ea.totalCumulativeLiveMinutes) : ''),
+        am?.loaded ? am.totalArchiveMinutes.toFixed(0) : (ea?.totalCumulativeArchiveMinutes != null ? String(ea.totalCumulativeArchiveMinutes) : ''),
+        am?.loaded ? am.totalViewingMinutes.toFixed(0) : '',
+        am?.loaded ? am.avgLiveMinutes.toFixed(1) : '',
+        am?.loaded ? am.avgArchiveMinutes.toFixed(1) : '',
+        am?.loaded ? am.avgEngagementScore.toFixed(1) : '',
+        am?.loaded ? String(am.totalQuestionsAsked) : String(w.questionsAsked || 0),
+        am?.loaded ? String(am.totalPollsAnswered) : String(w.pollResponses || 0),
+        am?.loaded ? String(am.totalSurveysAnswered) : String(w.surveyResponses || 0),
+        am?.loaded ? String(am.totalResourcesDownloaded) : String(ea?.uniqueAttendeeResourceDownloads ?? w.resourcesDownloaded ?? 0),
+        escapeCSV((w.tags || []).join('; ')),
+      ].join(',');
     });
-  }, [dashboardData, showTestWebinars, searchQuery, dateFilter, missingCampaignOnly, tagFilters]);
+    const csv = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+    const dateStr = new Date().toISOString().split('T')[0];
+    downloadFile(csv, `dashboard-export-${dateStr}.csv`, 'text/csv;charset=utf-8');
+  };
 
-  const testWebinarCount = dashboardData?.webinars.filter((w) => w.isTest).length ?? 0;
-  const missingCampaignCount = dashboardData?.webinars.filter((w) => !w.hasCampaignCode).length ?? 0;
-
-  // Top/poor performers from filtered data
-  const topPerformers = useMemo(() => {
-    return [...filteredWebinars]
-      .sort((a, b) => b.engagementScore - a.engagementScore)
-      .slice(0, 5);
-  }, [filteredWebinars]);
-
-  const poorPerformers = useMemo(() => {
-    return [...filteredWebinars]
-      .filter(w => w.totalAttendees > 0) // Only include webinars that had attendees
-      .sort((a, b) => a.engagementScore - b.engagementScore)
-      .slice(0, 5);
-  }, [filteredWebinars]);
-
-  const overallRecommendations = dashboardData
-    ? getOverallRecommendations(filteredWebinars)
-    : [];
-
-
-  // Wait for client-side hydration
-  if (!mounted) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <LoadingState message="Loading..." />
-      </div>
+  const handleExportJSON = () => {
+    if (filteredWebinars.length === 0) return;
+    downloadFile(
+      JSON.stringify(filteredWebinars, null, 2),
+      `dashboard-export-${new Date().toISOString().split('T')[0]}.json`,
+      'application/json',
     );
-  }
+  };
 
-  // Loading state (no cached data)
-  if (isLoading && !dashboardData) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <LoadingState message="Loading webinar data from On24 (fetching 3 years in batches, this may take a moment)..." />
-      </div>
-    );
-  }
+  // Build EventTable rows
+  const tableRows = useMemo(() =>
+    filteredWebinars.map(w => toTableRow(
+      w,
+      detailsMap.get(w.eventId),
+      ctaCountsMap.get(w.eventId),
+      () => handleExportImage(w.eventId, w.webinarName),
+      () => handlePrintEvent(w.eventId),
+    )),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [filteredWebinars, detailsMap, ctaCountsMap]);
 
-  // Error state (no cached data)
-  if (error && !dashboardData) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Alert variant="error" title="Error Loading Data">
-          <p>{error}</p>
-          <p className="mt-2 text-sm">
-            Make sure your On24 API credentials are configured in the .env.local file.
-          </p>
-          <Button onClick={fetchWebinarData} variant="outline" className="mt-4">
-            Try Again
-          </Button>
-        </Alert>
-      </div>
-    );
-  }
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-ansell-dark">Webinar Dashboard</h1>
-          <p className="text-sm text-ansell-gray-500">
-            {lastRefreshed ? (
-              <>
-                Last updated: {formatTimestamp(lastRefreshed)}
-                {cacheValid && (
-                  <span className="ml-2 text-ansell-teal">(cached)</span>
-                )}
-              </>
-            ) : (
-              'No data loaded'
-            )}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2 items-center">
-          {testWebinarCount > 0 && (
+
+      {/* Loading status bar */}
+      {(loading || progress || error) && (
+        <div className="flex items-center gap-3 px-1">
+          {loading && (
             <button
-              onClick={() => setShowTestWebinars(!showTestWebinars)}
-              className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
-                showTestWebinars
-                  ? 'bg-gray-100 border-gray-300 text-gray-700'
-                  : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
-              }`}
+              onClick={() => { fetchAbortRef.current?.abort(); metricsAbortRef.current?.abort(); setLoading(false); }}
+              className="px-2.5 py-1 text-xs border border-red-300 text-red-600 hover:bg-red-50 transition-colors"
             >
-              {showTestWebinars ? 'Hide' : 'Show'} Test Webinars ({testWebinarCount})
+              Stop
             </button>
           )}
-          <Button
-            onClick={fetchWebinarData}
-            isLoading={isLoading}
-            variant={cacheValid ? 'outline' : 'primary'}
-          >
-            {cacheValid ? 'Refresh Data' : 'Load Data'}
-          </Button>
-          {dashboardData && (
-            <Button onClick={clearCache} variant="ghost">
-              Clear Cache
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Error banner (with cached data) */}
-      {error && dashboardData && (
-        <Alert variant="warning" title="Refresh Failed">
-          <p>{error}</p>
-          <p className="text-sm">Showing cached data from {formatTimestamp(lastRefreshed!)}.</p>
-        </Alert>
-      )}
-
-      {/* Loading overlay (refreshing with cached data) */}
-      {isLoading && dashboardData && (
-        <div className="fixed inset-0 bg-black/20 z-40 flex items-center justify-center">
-          <div className="bg-white shadow-xl p-6 mx-4 max-w-md border-t-4 border-ansell-teal">
-            <div className="flex items-center gap-4">
-              <div className="animate-spin h-8 w-8 border-b-2 border-ansell-teal"></div>
-              <div>
-                <p className="font-medium text-ansell-gray-900">Refreshing Data...</p>
-                <p className="text-sm text-ansell-gray-500">Fetching 3 years of webinar data from On24</p>
-              </div>
-            </div>
-            <p className="mt-4 text-xs text-ansell-gray-400">This may take a moment as we fetch data in batches</p>
-          </div>
+          {loading ? (
+            <span className="text-[11px] text-gray-400 flex items-center gap-1.5">
+              <span className="inline-block h-3 w-3 border-2 border-ansell-teal border-t-transparent rounded-full animate-spin" />
+              {progress}
+            </span>
+          ) : progress ? (
+            <span className="text-[11px] text-ansell-gray">{progress}</span>
+          ) : null}
+          {error && <span className="text-sm text-red-600">{error}</span>}
         </div>
       )}
 
-      {/* Stats Overview */}
-      {dashboardData && <StatsOverview stats={dashboardData.overallStats} webinars={filteredWebinars} />}
+      {/* Results table */}
+      {webinars.length > 0 && (
+        <Card accent="blue">
+          <div className="px-4 pt-4 pb-2 flex items-center justify-between gap-4 flex-wrap border-b border-gray-100">
+            {/* Left: count + filter chips */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-ansell-gray">
+                {filteredWebinars.length} event{filteredWebinars.length !== 1 ? 's' : ''}
+                {filteredWebinars.length !== webinars.length && (
+                  <span className="ml-1 text-xs font-normal text-gray-400">
+                    (of {webinars.length})
+                  </span>
+                )}
+              </span>
 
-      {/* Filters */}
-      {dashboardData && (
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex flex-wrap gap-4 items-end">
-              {/* Search */}
-              <div className="flex-1 min-w-[200px]">
-                <label className="block text-xs font-medium text-gray-500 mb-1">Search</label>
-                <input
-                  type="text"
-                  placeholder="Search by name, campaign, or ID..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
+              {/* Type chips */}
+              {nonWebinarTypeCounts.map(([type, count]) => {
+                const excluded = excludedEventTypes.has(type);
+                const c = chipColor(type);
+                return (
+                  <button
+                    key={type}
+                    onClick={() => toggleExcludedType(type)}
+                    className={`px-2.5 py-1 text-xs border transition-colors flex items-center gap-1.5 ${
+                      excluded
+                        ? `${c.bg} ${c.border} ${c.text}`
+                        : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50'
+                    }`}
+                    title={excluded ? `Click to include ${type}` : `Click to exclude ${type}`}
+                  >
+                    <span className={`inline-block w-1.5 h-1.5 rounded-full ${c.dot}`} />
+                    {excluded ? `${count} ${type} hidden` : `${count} ${type}`}
+                  </button>
+                );
+              })}
 
-              {/* Date Range */}
-              <div className="min-w-[140px]">
-                <label className="block text-xs font-medium text-gray-500 mb-1">Date Range</label>
-                <select
-                  value={dateFilter}
-                  onChange={(e) => setDateFilter(e.target.value as typeof dateFilter)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">All Time</option>
-                  <option value="30">Last 30 Days</option>
-                  <option value="90">Last 90 Days</option>
-                  <option value="180">Last 6 Months</option>
-                  <option value="365">Last Year</option>
-                  <option value="730">Last 2 Years</option>
-                </select>
-              </div>
-
-              {/* Missing Campaign Toggle */}
-              {missingCampaignCount > 0 && (
+              {/* Tests chip */}
+              {testCount > 0 && (
                 <button
-                  onClick={() => setMissingCampaignOnly(!missingCampaignOnly)}
-                  className={`px-3 py-2 text-sm rounded-md border transition-colors ${
-                    missingCampaignOnly
+                  onClick={() => setShowTests(!showTests)}
+                  className={`px-2.5 py-1 text-xs border transition-colors flex items-center gap-1.5 ${
+                    showTests
                       ? 'bg-amber-100 border-amber-300 text-amber-800'
-                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                      : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50'
                   }`}
                 >
-                  Missing Campaign ({missingCampaignCount})
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  {showTests ? `${testCount} test` : `${testCount} test hidden`}
                 </button>
               )}
 
-              {/* Active Tag Filters */}
-              {tagFilters.length > 0 && tagFilters.map((tag) => (
+              {/* Active tag pills */}
+              {tagFilters.map(tag => (
                 <button
                   key={tag}
-                  onClick={() => setTagFilters(tagFilters.filter(t => t !== tag))}
-                  className="px-2 py-1.5 text-sm rounded-md bg-ansell-teal text-white flex items-center gap-1"
+                  onClick={() => toggleTagFilter(tag)}
+                  className="px-2.5 py-1 text-xs bg-ansell-teal text-white flex items-center gap-1"
                 >
                   {tag}
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               ))}
+            </div>
 
-              {/* Clear Filters */}
-              {(searchQuery || dateFilter !== 'all' || missingCampaignOnly || tagFilters.length > 0) && (
+            {/* Right: search + missing campaign + metrics indicator + exports */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {missingCampaignCount > 0 && (
                 <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setDateFilter('all');
-                    setMissingCampaignOnly(false);
-                    setTagFilters([]);
-                  }}
-                  className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700"
+                  onClick={() => setMissingCampaignOnly(!missingCampaignOnly)}
+                  className={`px-2.5 py-1 text-xs border transition-colors flex items-center gap-1.5 ${
+                    missingCampaignOnly
+                      ? 'bg-amber-100 border-amber-300 text-amber-800'
+                      : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                  }`}
                 >
-                  Clear Filters
+                  Missing campaign ({missingCampaignCount})
                 </button>
               )}
-            </div>
-
-            {/* Filter Results Summary */}
-            <div className="mt-3 text-sm text-gray-500">
-              Showing {filteredWebinars.length} of {dashboardData.webinars.length} webinars
-              {!showTestWebinars && testWebinarCount > 0 && ` (${testWebinarCount} test hidden)`}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Performance Chart */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Engagement Trends</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {dashboardData ? (
-              <PerformanceChart webinars={filteredWebinars} />
-            ) : (
-              <p className="text-gray-500 text-center py-12">No data available</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Recommendations */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Recommendations</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Recommendations recommendations={overallRecommendations} />
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Performance Lists */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Top Performers */}
-        <Card>
-          <CardHeader className="border-l-4 border-l-ansell-teal">
-            <CardTitle className="text-ansell-teal-dark">Top Performing Webinars</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <WebinarList
-              webinars={topPerformers}
-              variant="success"
-              emptyMessage="No webinars to display"
-              activeTagFilters={tagFilters}
-              onTagToggle={(tag) => setTagFilters(prev =>
-                prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-              )}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Needs Improvement */}
-        <Card>
-          <CardHeader className="border-l-4 border-l-ansell-dark">
-            <CardTitle className="text-ansell-dark">Needs Improvement</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <WebinarList
-              webinars={poorPerformers}
-              variant="warning"
-              emptyMessage="No webinars to display"
-              activeTagFilters={tagFilters}
-              onTagToggle={(tag) => setTagFilters(prev =>
-                prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-              )}
-            />
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Full Webinar List */}
-      {dashboardData && filteredWebinars.length > 0 && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>
-              All Webinars ({filteredWebinars.length})
-              {filteredWebinars.length !== dashboardData.webinars.length && (
-                <span className="ml-2 text-sm font-normal text-gray-500">
-                  (filtered from {dashboardData.webinars.length})
+              <input
+                type="text"
+                placeholder="Search name, campaign, ID…"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="px-3 py-1.5 border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-ansell-teal w-56"
+              />
+              {metricsLoading && (
+                <span className="text-[11px] text-gray-400 flex items-center gap-1.5">
+                  <span className="inline-block h-2 w-2 rounded-full bg-ansell-teal animate-pulse" />
+                  Loading metrics {metricsLoaded}/{metricsTotal}
                 </span>
               )}
-            </CardTitle>
-            <Button
-              onClick={() => setShowExportModal(true)}
-              variant="outline"
-              className="flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Export CSV
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <WebinarList
-              webinars={filteredWebinars}
-              showDetails
-              sortable
-              activeTagFilters={tagFilters}
-              onTagToggle={(tag) => setTagFilters(prev =>
-                prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+              {/* Export buttons */}
+              {filteredWebinars.length > 0 && (
+                <>
+                  <button
+                    onClick={handleExportCSV}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+                    title="Export table as CSV"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    CSV
+                  </button>
+                  <button
+                    onClick={handleExportJSON}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+                    title="Export data as JSON"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                    </svg>
+                    JSON
+                  </button>
+                </>
               )}
+            </div>
+          </div>
+
+          <CardContent className="p-0">
+            <EventTable
+              rows={tableRows}
+              onExpand={handleExpandRow}
+              activeTagFilters={tagFilters}
+              onTagToggle={toggleTagFilter}
+              emptyMessage={searchQuery || missingCampaignOnly || tagFilters.length > 0
+                ? 'No events match your filters'
+                : 'No events found for this date range'}
             />
           </CardContent>
         </Card>
       )}
 
-      {/* Export Modal */}
-      <ExportModal
-        isOpen={showExportModal}
-        onClose={() => setShowExportModal(false)}
-        webinars={filteredWebinars}
-      />
+      {/* Empty state */}
+      {!loading && webinars.length === 0 && !error && (
+        <div className="text-center py-16 text-gray-400">
+          <p className="text-lg">No events found for this date range.</p>
+          <p className="text-sm mt-1">Try a wider range using the presets above.</p>
+        </div>
+      )}
+
     </div>
   );
 }
