@@ -5,6 +5,7 @@ import { useWebinarStore } from '@/store/webinar-store';
 import { WebinarSummary, AttendeeMetrics } from '@/types/webinar';
 import { Card } from '@/components/ui/card';
 import type { RevenueData, ProgramRevenue } from '@/app/api/revenue/data/route';
+import type { MarketoData, MarketoProgramRow } from '@/app/api/marketo/data/route';
 
 // ── Data accessors ─────────────────────────────────────────────────────────────
 
@@ -492,13 +493,14 @@ function ExpandableSourceBar({ source, maxReg, expanded, onToggle }: {
   );
 }
 
-function RegistrationSources({ sources, status, totalReg, totalAtt, sourceField, breakdowns }: {
+function RegistrationSources({ sources, status, totalReg, totalAtt, sourceField, breakdowns, funnelSlot }: {
   sources: RegSource[];
   status: 'idle' | 'loading' | 'done' | 'error';
   totalReg: number;
   totalAtt: number;
   sourceField: SourceField;
   breakdowns: Partial<Record<SourceField, BreakdownEntry>>;
+  funnelSlot?: React.ReactNode;
 }) {
   const { tracked, directReg, directAtt } = useMemo(() => mergeSources(sources), [sources]);
 
@@ -680,8 +682,9 @@ function RegistrationSources({ sources, status, totalReg, totalAtt, sourceField,
               </div>
             </div>
 
-            {/* Right — best/worst att rate */}
+            {/* Right — email funnel + best/worst att rate */}
             <div>
+              {funnelSlot}
               <p className="text-[9px] font-semibold uppercase tracking-wider text-emerald-600 mb-1.5">Best Attendance Rate (min 5 reg)</p>
               {byRate.slice(0, 5).map((s, i) => (
                 <div key={s.code} className="flex items-center gap-2 py-1 border-b border-gray-100 last:border-0">
@@ -732,16 +735,112 @@ export default function InsightsPage() {
   const sourcesRef = useRef(false);
 
   const [showEventIds, setShowEventIds] = useState(false);
-  const [activeSection, setActiveSection] = useState<'registration' | 'attendance' | 'engagement' | 'revenue' | null>(null);
+  const [activeSection, setActiveSection] = useState<'setup' | 'registration' | 'attendance' | 'engagement' | 'revenue' | null>(null);
 
   // Revenue attribution
   const [revenueData, setRevenueData] = useState<RevenueData | null>(null);
   const [revenueStatus, setRevenueStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [revenueError, setRevenueError] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [revenueFiles, setRevenueFiles] = useState<string[]>([]);
+  const [selectedRevenueFile, setSelectedRevenueFile] = useState<string | null>(null);
   const revenueRef = useRef(false);
   const [revAttribution, setRevAttribution] = useState<'mt' | 'ft'>('mt');
   const [revShowAll, setRevShowAll] = useState(false);
+
+  // Marketo Program Membership
+  const [marketoData, setMarketoData] = useState<MarketoData | null>(null);
+  const [marketoStatus, setMarketoStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [marketoError, setMarketoError] = useState('');
+  const [marketoUploading, setMarketoUploading] = useState(false);
+  const [marketoFiles, setMarketoFiles] = useState<string[]>([]);
+  const [selectedMarketoFile, setSelectedMarketoFile] = useState<string | null>(null);
+  const marketoRef = useRef(false);
+
+  const [exportingAs, setExportingAs] = useState<'png' | 'html' | null>(null);
+  const isExporting = exportingAs !== null;
+
+  const dateTag = new Date().toISOString().slice(0, 10);
+
+  const handleExportPng = async () => {
+    const html2canvas = (await import('html2canvas')).default;
+    setExportingAs('png');
+    await new Promise(r => setTimeout(r, 700));
+    try {
+      const el = document.getElementById('insights-export-root');
+      if (!el) return;
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        scrollX: 0,
+        scrollY: -window.scrollY,
+        width: el.scrollWidth,
+        height: el.scrollHeight,
+        windowWidth: el.scrollWidth,
+        windowHeight: el.scrollHeight,
+      });
+      const link = document.createElement('a');
+      link.download = `insights-${dateTag}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } finally {
+      setExportingAs(null);
+    }
+  };
+
+  const handleExportHtml = async () => {
+    setExportingAs('html');
+    await new Promise(r => setTimeout(r, 700));
+    try {
+      const el = document.getElementById('insights-export-root');
+      if (!el) return;
+      // Collect all <style> tags from the document
+      const styleContent = Array.from(document.querySelectorAll('style'))
+        .map(s => s.textContent ?? '')
+        .join('\n');
+      // Also include any same-origin <link rel="stylesheet">
+      const linkStyles = await Promise.all(
+        Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'))
+          .map(async l => {
+            try {
+              const res = await fetch(l.href);
+              return res.ok ? await res.text() : '';
+            } catch { return ''; }
+          })
+      );
+      const allStyles = styleContent + '\n' + linkStyles.join('\n');
+      const title = `Ansell Insights Export — ${dateTag}`;
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${title}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f9fafb; margin: 0; padding: 24px; font-family: Arial, sans-serif; }
+    button { pointer-events: none; }
+    ${allStyles}
+  </style>
+</head>
+<body>
+  <p style="font-size:11px;color:#9ca3af;margin-bottom:16px;">
+    Exported from Ansell Webinar Analytics · ${title}
+  </p>
+  ${el.outerHTML}
+</body>
+</html>`;
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const link = document.createElement('a');
+      link.download = `insights-${dateTag}.html`;
+      link.href = URL.createObjectURL(blob);
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } finally {
+      setExportingAs(null);
+    }
+  };
 
   const [expandedLeaders, setExpandedLeaders] = useState<Set<string>>(new Set());
   const toggleLeader = (key: string) => setExpandedLeaders(prev => {
@@ -922,18 +1021,34 @@ export default function InsightsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterVersion]);
 
-  // Load revenue data once
+  // Load revenue data + files list once
   useEffect(() => {
     if (revenueRef.current) return;
     revenueRef.current = true;
     setRevenueStatus('loading');
-    fetch('/api/revenue/data')
-      .then(r => r.json())
-      .then(data => {
-        if (data.error) { setRevenueError(data.error); setRevenueStatus('error'); }
-        else { setRevenueData(data); setRevenueStatus('done'); }
-      })
-      .catch(e => { setRevenueError(String(e)); setRevenueStatus('error'); });
+    Promise.all([
+      fetch('/api/revenue/data').then(r => r.json()),
+      fetch('/api/revenue/files').then(r => r.json()),
+    ]).then(([data, filesResult]) => {
+      if (filesResult.files) setRevenueFiles(filesResult.files);
+      if (data.error) { setRevenueError(data.error); setRevenueStatus('error'); }
+      else { setRevenueData(data); setRevenueStatus('done'); setSelectedRevenueFile(data.fileName); }
+    }).catch(e => { setRevenueError(String(e)); setRevenueStatus('error'); });
+  }, []);
+
+  // Load Marketo data + files list once
+  useEffect(() => {
+    if (marketoRef.current) return;
+    marketoRef.current = true;
+    setMarketoStatus('loading');
+    Promise.all([
+      fetch('/api/marketo/data').then(r => r.json()),
+      fetch('/api/marketo/files').then(r => r.json()),
+    ]).then(([data, filesResult]) => {
+      if (filesResult.files) setMarketoFiles(filesResult.files);
+      if (data.error) { setMarketoError(data.error); setMarketoStatus('error'); }
+      else { setMarketoData(data); setMarketoStatus('done'); setSelectedMarketoFile(data.fileName); }
+    }).catch(e => { setMarketoError(String(e)); setMarketoStatus('error'); });
   }, []);
 
   const metricsLoadedCount  = webinars.filter(w => w.attendeeMetrics?.loaded).length;
@@ -1137,11 +1252,12 @@ export default function InsightsPage() {
     }
 
     // Revenue cross-findings (always MT as primary attribution model)
-    if (revenueData && webinars.length > 0) {
+    if (revenueData && filteredWebinars.length > 0) {
       const campaignMap = new Map<string, WebinarSummary[]>();
-      for (const w of webinars) {
+      for (const w of filteredWebinars) {
         if (!w.campaignName) continue;
-        const keys = [w.campaignName, w.campaignName.replace(/\*[^*]*$/, '')];
+        const stripped = w.campaignName.replace(/\*[^*]*$/, '');
+        const keys = stripped === w.campaignName ? [w.campaignName] : [w.campaignName, stripped];
         for (const k of keys) {
           if (!campaignMap.has(k)) campaignMap.set(k, []);
           campaignMap.get(k)!.push(w);
@@ -1189,7 +1305,49 @@ export default function InsightsPage() {
     }
 
     return findings;
-  }, [filteredWebinars, totals, dowStats, tagStats, langStats, sources, sourcesRegTotal, revenueData, webinars]);
+  }, [filteredWebinars, totals, dowStats, tagStats, langStats, sources, sourcesRegTotal, revenueData]);
+
+  // Marketo programs matched to current filtered events (by campaign code)
+  const mktMatchedPrograms = useMemo(() => {
+    if (!marketoData) return [];
+    const map = new Map<string, WebinarSummary[]>();
+    for (const w of filteredWebinars) {
+      if (!w.campaignName) continue;
+      const stripped = w.campaignName.replace(/\*[^*]*$/, '');
+      const keys = stripped === w.campaignName ? [w.campaignName] : [w.campaignName, stripped];
+      for (const k of keys) {
+        const arr = map.get(k) ?? [];
+        if (!arr.includes(w)) arr.push(w);
+        map.set(k, arr);
+      }
+    }
+    const getMatches = (name: string) => {
+      const stripped = name.replace(/\*[^*]*$/, '');
+      return map.get(name) || map.get(stripped) || [];
+    };
+    return marketoData.programs
+      .filter(p => getMatches(p.programName).length > 0)
+      .map(p => ({ ...p, matches: getMatches(p.programName) }));
+  }, [marketoData, filteredWebinars]);
+
+  // ON24 events (in current filter) whose campaign code has NO matching Marketo program
+  const mktMissingWebinars = useMemo(() => {
+    if (!marketoData) return [];
+    const mktNames = new Set<string>();
+    for (const p of marketoData.programs) {
+      mktNames.add(p.programName);
+      mktNames.add(p.programName.replace(/\*[^*]*$/, ''));
+    }
+    const seen = new Set<string>();
+    return filteredWebinars.filter(w => {
+      if (!w.campaignName) return false;
+      const stripped = w.campaignName.replace(/\*[^*]*$/, '');
+      if (mktNames.has(w.campaignName) || mktNames.has(stripped)) return false;
+      if (seen.has(w.campaignName)) return false;
+      seen.add(w.campaignName);
+      return true;
+    });
+  }, [marketoData, filteredWebinars]);
 
   const maxTagEng = Math.max(...tagStats.map(t => t.avgEng), 1);
   const maxDowAtt = Math.max(...dowStats.map(d => d.attRate), 0.01);
@@ -1205,7 +1363,7 @@ export default function InsightsPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div id="insights-export-root" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
       {/* Title + metrics loading status */}
       <div className="flex items-baseline justify-between gap-4 flex-wrap">
@@ -1236,6 +1394,28 @@ export default function InsightsPage() {
         {!metricsStillLoading && metricsLoadedCount > 0 && (
           <span className="text-[10px] text-emerald-600">Attendee metrics loaded for {metricsLoadedCount}/{webinars.length} events</span>
         )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            onClick={handleExportPng}
+            disabled={isExporting}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold border border-gray-300 text-gray-600 hover:border-ansell-blue hover:text-ansell-blue transition-colors disabled:opacity-50 disabled:cursor-wait"
+          >
+            {exportingAs === 'png'
+              ? <><span className="inline-block h-3 w-3 border-2 border-ansell-blue border-t-transparent rounded-full animate-spin" /> Exporting…</>
+              : <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg> PNG</>
+            }
+          </button>
+          <button
+            onClick={handleExportHtml}
+            disabled={isExporting}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold border border-gray-300 text-gray-600 hover:border-ansell-teal hover:text-ansell-teal transition-colors disabled:opacity-50 disabled:cursor-wait"
+          >
+            {exportingAs === 'html'
+              ? <><span className="inline-block h-3 w-3 border-2 border-ansell-teal border-t-transparent rounded-full animate-spin" /> Exporting…</>
+              : <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg> HTML</>
+            }
+          </button>
+        </div>
       </div>
 
       {/* Tag filter */}
@@ -1323,7 +1503,7 @@ export default function InsightsPage() {
       )}
 
       {/* ════════════════════════ SECTION NAVIGATOR ════════════════════════════ */}
-      {(() => {
+      {!isExporting && (() => {
         const ipaTeaser = totals.att > 0
           ? ((totals.qa + totals.polls + totals.surveys + totals.dl + totals.reactions) / totals.att).toFixed(2)
           : '—';
@@ -1336,7 +1516,7 @@ export default function InsightsPage() {
         const revMatchedMtWon = (() => {
           if (!revenueData) return 0;
           const codes = new Set<string>();
-          for (const w of webinars) {
+          for (const w of filteredWebinars) {
             if (w.campaignName) {
               codes.add(w.campaignName);
               codes.add(w.campaignName.replace(/\*[^*]*$/, ''));
@@ -1347,6 +1527,14 @@ export default function InsightsPage() {
             .reduce((s, p) => s + p.mtWon, 0);
         })();
         const SECS = [
+          {
+            key: 'setup' as const,
+            label: 'Setup',
+            color: '#7030A0',
+            bigStat: marketoStatus === 'done' ? fmtNum(mktMatchedPrograms.length) : (marketoStatus === 'loading' ? '…' : '—'),
+            bigStatLabel: 'matched programs',
+            smallStat: marketoStatus === 'done' && marketoData ? `${marketoData.programs.length} programs · ${marketoData.fileDate}` : (marketoStatus === 'error' ? 'no file found' : 'upload Marketo report'),
+          },
           {
             key: 'registration' as const,
             label: 'Registration',
@@ -1383,7 +1571,7 @@ export default function InsightsPage() {
         const isActive = activeSection !== null;
         if (!isActive) {
           return (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               {SECS.map(s => (
                 <button key={s.key} onClick={() => setActiveSection(s.key)}
                   className="text-left p-8 border-2 border-gray-200 bg-white hover:shadow-md hover:border-gray-300 transition-all group">
@@ -1401,7 +1589,7 @@ export default function InsightsPage() {
           );
         }
         return (
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-5 gap-2">
             {SECS.map(s => {
               const selected = activeSection === s.key;
               return (
@@ -1423,8 +1611,189 @@ export default function InsightsPage() {
         );
       })()}
 
+      {/* ════════════════════════════ SETUP ══════════════════════════════ */}
+      {(activeSection === 'setup' || isExporting) && (
+      <div className="space-y-6">
+
+      {/* Marketo Program Membership */}
+      <Card className="px-4 py-4" accent="blue">
+        <div className="mb-4">
+          <SectionLabel tip="Marketo Program Membership report. Members = all invitees (conversion denominator). New Names = net-new leads identified. Success = attended, watched on-demand, or asked to be contacted.">
+            Marketo Program Membership
+          </SectionLabel>
+          <div className="flex items-center flex-wrap gap-2">
+              {marketoFiles.length > 0 && (
+                <select
+                  value={selectedMarketoFile ?? ''}
+                  onChange={async e => {
+                    const file = e.target.value;
+                    setSelectedMarketoFile(file);
+                    setMarketoStatus('loading');
+                    const d = await fetch(`/api/marketo/data?file=${encodeURIComponent(file)}`).then(r => r.json());
+                    if (d.error) { setMarketoError(d.error); setMarketoStatus('error'); }
+                    else { setMarketoData(d); setMarketoStatus('done'); }
+                  }}
+                  className="text-[11px] border border-gray-300 px-2 py-1 text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-ansell-teal max-w-xs"
+                >
+                  {marketoFiles.map(f => <option key={f} value={f}>{f}</option>)}
+                </select>
+              )}
+              {marketoStatus === 'done' && marketoData && (
+                <span className="text-[11px] text-gray-400">{marketoData.programs.length} programs · {marketoData.fileDate}</span>
+              )}
+              {selectedMarketoFile && (
+                <button
+                  onClick={async () => {
+                    if (!window.confirm(`Delete "${selectedMarketoFile}"?`)) return;
+                    await fetch(`/api/marketo/files?file=${encodeURIComponent(selectedMarketoFile)}`, { method: 'DELETE' });
+                    const { files } = await fetch('/api/marketo/files').then(r => r.json());
+                    setMarketoFiles(files ?? []);
+                    if (files?.length > 0) {
+                      setSelectedMarketoFile(files[0]);
+                      const d = await fetch(`/api/marketo/data?file=${encodeURIComponent(files[0])}`).then(r => r.json());
+                      if (!d.error) { setMarketoData(d); setMarketoStatus('done'); }
+                    } else { setMarketoData(null); setMarketoStatus('idle'); setSelectedMarketoFile(null); }
+                  }}
+                  className="text-[11px] text-red-500 border border-red-200 px-2 py-1 hover:bg-red-50 transition-colors"
+                  title="Delete this file"
+                >✕ Delete</button>
+              )}
+              {marketoStatus === 'loading' && <span className="text-[11px] text-gray-400">Loading…</span>}
+              {marketoStatus === 'error' && <span className="text-[11px] text-red-500">{marketoError}</span>}
+              <label className={`px-3 py-1.5 text-[11px] font-semibold border cursor-pointer transition-colors ${marketoUploading ? 'text-gray-300 border-gray-200 cursor-default' : 'text-ansell-blue border-ansell-blue hover:bg-blue-50'}`}>
+                {marketoUploading ? 'Uploading…' : '↑ Upload .xlsx'}
+                <input type="file" accept=".xlsx" className="hidden" disabled={marketoUploading} onChange={async e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setMarketoUploading(true);
+                  try {
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    const res = await fetch('/api/marketo/upload', { method: 'POST', body: fd });
+                    const json = await res.json();
+                    if (json.success) {
+                      const [d, { files }] = await Promise.all([
+                        fetch(`/api/marketo/data?file=${encodeURIComponent(json.savedAs)}`).then(r => r.json()),
+                        fetch('/api/marketo/files').then(r => r.json()),
+                      ]);
+                      setMarketoFiles(files ?? []);
+                      if (!d.error) { setMarketoData(d); setMarketoStatus('done'); setSelectedMarketoFile(json.savedAs); }
+                    }
+                  } finally { setMarketoUploading(false); e.target.value = ''; }
+                }} />
+              </label>
+          </div>
+        </div>
+
+        {mktMatchedPrograms.length > 0 && (() => {
+          const matched = mktMatchedPrograms;
+          const flagged = matched.filter(p => p.flags.length > 0);
+          const totM = matched.reduce(
+            (s, p) => ({ members: s.members + p.members, newNames: s.newNames + p.newNames, success: s.success + p.success }),
+            { members: 0, newNames: 0, success: 0 },
+          );
+          const convRate = totM.members > 0 ? Math.round((totM.success / totM.members) * 1000) / 10 : 0;
+          const newNamesRate = totM.members > 0 ? Math.round((totM.newNames / totM.members) * 1000) / 10 : 0;
+          return (
+            <>
+              {/* Events missing from Marketo entirely */}
+              {mktMissingWebinars.length > 0 && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-red-700 mb-2">Not Set Up in Marketo ({mktMissingWebinars.length})</p>
+                  <div className="space-y-0.5">
+                    {mktMissingWebinars.map(w => (
+                      <div key={w.eventId} className="text-[11px] flex items-baseline gap-2">
+                        <span className="font-mono text-red-800 font-semibold shrink-0">{w.campaignName}</span>
+                        <span className="text-gray-500 truncate">{truncate(w.webinarName, 50)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Setup flags */}
+              {flagged.length > 0 && (
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-200">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-2">Setup Flags</p>
+                  <div className="space-y-1">
+                    {flagged.map(p => (
+                      <div key={p.programName} className="text-[11px]">
+                        <span className="font-mono text-amber-800 font-semibold">{p.programName}</span>
+                        {p.flags.map((f, i) => <span key={i} className="ml-2 text-amber-700">· {f}</span>)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Programs table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-1.5 pr-3 font-semibold text-gray-500 uppercase tracking-wider text-[9px]">Program / Event</th>
+                      <th className="text-right py-1.5 px-2 font-semibold text-gray-500 uppercase tracking-wider text-[9px] whitespace-nowrap">Members</th>
+                      <th className="text-right py-1.5 px-2 font-semibold text-gray-500 uppercase tracking-wider text-[9px] whitespace-nowrap">New Names</th>
+                      <th className="text-right py-1.5 px-2 font-semibold text-gray-500 uppercase tracking-wider text-[9px] whitespace-nowrap">Success</th>
+                      <th className="text-right py-1.5 px-2 font-semibold text-gray-500 uppercase tracking-wider text-[9px] whitespace-nowrap">Conv %</th>
+                      <th className="text-right py-1.5 pl-2 font-semibold text-gray-500 uppercase tracking-wider text-[9px]">New Names %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {matched.map(p => (
+                      <tr key={p.programName} className={`border-b border-gray-100 last:border-0 ${p.flags.length > 0 ? 'bg-amber-50' : ''}`}>
+                        <td className="py-1.5 pr-3 max-w-[260px]">
+                          <EventNamePopover
+                            eventId={p.matches[0].eventId}
+                            name={p.matches[0].webinarName}
+                            campaignName={p.programName}
+                            display={<span className="font-mono text-[10px] text-ansell-blue leading-snug block truncate">{p.programName}</span>}
+                          />
+                          {p.flags.length > 0 && <span className="text-[8px] text-amber-600 leading-tight block">⚠ {p.flags[0]}</span>}
+                        </td>
+                        <td className="py-1.5 px-2 text-right font-mono">{p.members.toLocaleString()}</td>
+                        <td className="py-1.5 px-2 text-right font-mono">{p.newNames.toLocaleString()}</td>
+                        <td className="py-1.5 px-2 text-right font-mono">{p.success.toLocaleString()}</td>
+                        <td className="py-1.5 px-2 text-right font-semibold" style={{ color: p.conversionRate >= 30 ? '#059669' : p.conversionRate >= 15 ? '#D97706' : '#DC2626' }}>
+                          {p.conversionRate}%
+                        </td>
+                        <td className="py-1.5 pl-2 text-right font-mono text-gray-600">{p.newNamesRate}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-gray-300 font-semibold">
+                      <td className="py-1.5 pr-3 text-[10px] text-gray-600">Total ({matched.length} programs)</td>
+                      <td className="py-1.5 px-2 text-right font-mono">{totM.members.toLocaleString()}</td>
+                      <td className="py-1.5 px-2 text-right font-mono">{totM.newNames.toLocaleString()}</td>
+                      <td className="py-1.5 px-2 text-right font-mono">{totM.success.toLocaleString()}</td>
+                      <td className="py-1.5 px-2 text-right font-semibold">{convRate}%</td>
+                      <td className="py-1.5 pl-2 text-right font-mono text-gray-600">{newNamesRate}%</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </>
+          );
+        })()}
+
+        {marketoStatus === 'done' && mktMatchedPrograms.length === 0 && (
+          <p className="text-[11px] text-gray-400 text-center py-4">
+            No programs matched to current filtered events. Adjust your date range or upload a newer report.
+          </p>
+        )}
+        {(marketoStatus === 'idle' || (marketoStatus === 'error' && !marketoData)) && (
+          <p className="text-[11px] text-gray-400 text-center py-4">
+            No Marketo report found. Upload a Program Membership .xlsx file to get started.
+          </p>
+        )}
+      </Card>
+
+      </div>
+      )}
+
       {/* ════════════════════════════ REGISTRATION ══════════════════════════════ */}
-      {activeSection === 'registration' && (
+      {(activeSection === 'registration' || isExporting) && (
       <div className="space-y-6">
 
       {/* Registration Sources */}
@@ -1467,6 +1836,54 @@ export default function InsightsPage() {
           totalAtt={sourcesAttTotal}
           sourceField={sourceField}
           breakdowns={breakdowns}
+          funnelSlot={marketoStatus === 'done' && sourcesStatus === 'done' && mktMatchedPrograms.length > 0 ? (() => {
+            const mktInvited = mktMatchedPrograms.reduce((s, p) => s + p.members, 0);
+            const { tracked } = mergeSources(sources);
+            const mktSrc = tracked.find(s => s.code === 'marketo');
+            const mktReg = mktSrc?.registrants ?? 0;
+            const mktAtt = mktSrc?.attendees ?? 0;
+            const regRate = mktInvited > 0 ? mktReg / mktInvited : 0;
+            const attRate = mktReg > 0 ? mktAtt / mktReg : 0;
+            return (
+              <div className="mb-4 pb-4 border-b border-gray-100">
+                <SectionLabel tip="Email invite funnel: Marketo Members (invited) → email-sourced registrants → email-sourced attendees. Social, direct and other channels excluded for an apples-to-apples comparison.">
+                  Email Invite Funnel
+                </SectionLabel>
+                {marketoData?.fileDate && (
+                  <p className="text-[9px] text-gray-400 mb-2">Source: {marketoData.fileDate}</p>
+                )}
+                <div className="flex items-stretch">
+                  <div className="flex-1 text-center px-3 py-2.5 bg-gray-50 border border-gray-100">
+                    <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Invited</p>
+                    <p className="text-[20px] font-bold leading-none text-ansell-blue">{fmtNum(mktInvited)}</p>
+                    <p className="text-[9px] text-gray-400 mt-0.5">Marketo members</p>
+                  </div>
+                  <div className="flex flex-col items-center justify-center px-2 shrink-0">
+                    <span className="text-[10px] font-semibold text-gray-600">{fmtPct(regRate)}</span>
+                    <svg className="w-4 h-4 text-gray-300 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 text-center px-3 py-2.5 bg-gray-50 border border-gray-100">
+                    <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Registered</p>
+                    <p className="text-[20px] font-bold leading-none text-ansell-teal">{fmtNum(mktReg)}</p>
+                    <p className="text-[9px] text-gray-400 mt-0.5">via email / Marketo</p>
+                  </div>
+                  <div className="flex flex-col items-center justify-center px-2 shrink-0">
+                    <span className="text-[10px] font-semibold text-gray-600">{fmtPct(attRate)}</span>
+                    <svg className="w-4 h-4 text-gray-300 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 text-center px-3 py-2.5 bg-gray-50 border border-gray-100">
+                    <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Attended</p>
+                    <p className="text-[20px] font-bold leading-none text-gray-600">{fmtNum(mktAtt)}</p>
+                    <p className="text-[9px] text-gray-400 mt-0.5">email-sourced</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })() : undefined}
         />
       </Card>
 
@@ -1474,7 +1891,7 @@ export default function InsightsPage() {
       )}
 
       {/* ════════════════════════════ ATTENDANCE ════════════════════════════════ */}
-      {activeSection === 'attendance' && (
+      {(activeSection === 'attendance' || isExporting) && (
       <div className="space-y-6">
 
       {/* Attendance KPIs */}
@@ -1596,7 +2013,7 @@ export default function InsightsPage() {
       )}
 
       {/* ════════════════════════════ ENGAGEMENT ════════════════════════════════ */}
-      {activeSection === 'engagement' && (
+      {(activeSection === 'engagement' || isExporting) && (
       <div className="space-y-6">
 
       {/* Engagement KPIs */}
@@ -1745,7 +2162,7 @@ export default function InsightsPage() {
                 By Resource
               </SectionLabel>
               <div className="space-y-1.5 mt-3">
-                {(resourcesExpanded ? topResources : topResources.slice(0, 5)).map(([name, count], i) => (
+                {((isExporting || resourcesExpanded) ? topResources : topResources.slice(0, 5)).map(([name, count], i) => (
                   <div key={name} className="flex items-center gap-3">
                     <span className="text-[10px] text-ansell-gray w-4 text-right shrink-0">{i + 1}</span>
                     <div className="flex-1 min-w-0">
@@ -1775,7 +2192,7 @@ export default function InsightsPage() {
               </SectionLabel>
               <div className="space-y-2 mt-3">
                 {byWebinar.map(({ w, total }, i) => {
-                  const isExpanded = expandedWebinars.has(w.eventId);
+                  const isExpanded = isExporting || expandedWebinars.has(w.eventId);
                   const rb = w.attendeeMetrics?.resourceBreakdown ?? {};
                   const allAssets = Object.entries(rb).sort((a, b) => b[1] - a[1]);
                   return (
@@ -1829,7 +2246,7 @@ export default function InsightsPage() {
                 : (
                   <div className="space-y-2 mt-3">
                     {byTagSorted.map(([tag, count], i) => {
-                      const isExpanded = expandedTags.has(tag);
+                      const isExpanded = isExporting || expandedTags.has(tag);
                       const tagAssets = Object.entries(byTagResources[tag] ?? {}).sort((a, b) => b[1] - a[1]);
                       return (
                         <div key={tag} className="flex items-start gap-3">
@@ -1964,7 +2381,7 @@ export default function InsightsPage() {
             </SectionLabel>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
               {leaders.map(({ key, title, tipText, color, textCls, items, getValue, getMax, getSub, emptyMsg }) => {
-                const isExpanded = expandedLeaders.has(key);
+                const isExpanded = isExporting || expandedLeaders.has(key);
                 const displayed  = isExpanded ? items : items.slice(0, PREVIEW);
                 const maxVal     = getMax(items);
                 return (
@@ -2095,40 +2512,71 @@ export default function InsightsPage() {
       )}
 
       {/* ════════════════════════════ REVENUE ════════════════════════════════════ */}
-      {activeSection === 'revenue' && (
+      {(activeSection === 'revenue' || isExporting) && (
       <div className="space-y-6">
 
       {/* File bar + upload */}
-      <div className="flex items-center justify-between flex-wrap gap-3 px-1">
-        <div>
-          {revenueStatus === 'done' && revenueData && (
-            <p className="text-[11px] text-gray-500">
-              Loaded: <span className="font-semibold text-gray-700">{revenueData.fileName}</span>
-              <span className="ml-2 text-gray-400">· {revenueData.programs.length} programs · {revenueData.totals.opportunityCount.toLocaleString()} opportunities</span>
-            </p>
+      <div className="flex items-center flex-wrap gap-2 px-1">
+          {revenueFiles.length > 0 && (
+            <select
+              value={selectedRevenueFile ?? ''}
+              onChange={async e => {
+                const file = e.target.value;
+                setSelectedRevenueFile(file);
+                setRevenueStatus('loading');
+                const d = await fetch(`/api/revenue/data?file=${encodeURIComponent(file)}`).then(r => r.json());
+                if (d.error) { setRevenueError(d.error); setRevenueStatus('error'); }
+                else { setRevenueData(d); setRevenueStatus('done'); }
+              }}
+              className="text-[11px] border border-gray-300 px-2 py-1 text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-ansell-teal max-w-xs"
+            >
+              {revenueFiles.map(f => <option key={f} value={f}>{f}</option>)}
+            </select>
           )}
-          {revenueStatus === 'loading' && <p className="text-[11px] text-gray-400">Loading revenue data…</p>}
-          {revenueStatus === 'error' && <p className="text-[11px] text-red-500">{revenueError}</p>}
-        </div>
-        <label className={`px-3 py-1.5 text-[11px] font-semibold border cursor-pointer transition-colors ${uploading ? 'text-gray-300 border-gray-200 cursor-default' : 'text-emerald-700 border-emerald-400 hover:bg-emerald-50'}`}>
-          {uploading ? 'Uploading…' : '↑ Upload new report'}
-          <input type="file" accept=".xlsx" className="sr-only" disabled={uploading} onChange={async e => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            setUploading(true);
-            try {
-              const fd = new FormData();
-              fd.append('file', file);
-              const res = await fetch('/api/revenue/upload', { method: 'POST', body: fd });
-              const json = await res.json();
-              if (json.success) {
-                const r = await fetch('/api/revenue/data');
-                const d = await r.json();
-                if (!d.error) { setRevenueData(d); setRevenueStatus('done'); }
-              }
-            } finally { setUploading(false); e.target.value = ''; }
-          }} />
-        </label>
+          {revenueStatus === 'done' && revenueData && (
+            <span className="text-[11px] text-gray-400">{revenueData.programs.length} programs · {revenueData.totals.opportunityCount.toLocaleString()} opps</span>
+          )}
+          {selectedRevenueFile && (
+            <button
+              onClick={async () => {
+                if (!window.confirm(`Delete "${selectedRevenueFile}"?`)) return;
+                await fetch(`/api/revenue/files?file=${encodeURIComponent(selectedRevenueFile)}`, { method: 'DELETE' });
+                const { files } = await fetch('/api/revenue/files').then(r => r.json());
+                setRevenueFiles(files ?? []);
+                if (files?.length > 0) {
+                  setSelectedRevenueFile(files[0]);
+                  const d = await fetch(`/api/revenue/data?file=${encodeURIComponent(files[0])}`).then(r => r.json());
+                  if (!d.error) { setRevenueData(d); setRevenueStatus('done'); }
+                } else { setRevenueData(null); setRevenueStatus('idle'); setSelectedRevenueFile(null); }
+              }}
+              className="text-[11px] text-red-500 border border-red-200 px-2 py-1 hover:bg-red-50 transition-colors"
+              title="Delete this file"
+            >✕ Delete</button>
+          )}
+          {revenueStatus === 'loading' && <span className="text-[11px] text-gray-400">Loading…</span>}
+          {revenueStatus === 'error' && <span className="text-[11px] text-red-500">{revenueError}</span>}
+          <label className={`px-3 py-1.5 text-[11px] font-semibold border cursor-pointer transition-colors ${uploading ? 'text-gray-300 border-gray-200 cursor-default' : 'text-emerald-700 border-emerald-400 hover:bg-emerald-50'}`}>
+            {uploading ? 'Uploading…' : '↑ Upload new report'}
+            <input type="file" accept=".xlsx" className="sr-only" disabled={uploading} onChange={async e => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setUploading(true);
+              try {
+                const fd = new FormData();
+                fd.append('file', file);
+                const res = await fetch('/api/revenue/upload', { method: 'POST', body: fd });
+                const json = await res.json();
+                if (json.success) {
+                  const [d, { files }] = await Promise.all([
+                    fetch(`/api/revenue/data?file=${encodeURIComponent(json.savedAs)}`).then(r => r.json()),
+                    fetch('/api/revenue/files').then(r => r.json()),
+                  ]);
+                  setRevenueFiles(files ?? []);
+                  if (!d.error) { setRevenueData(d); setRevenueStatus('done'); setSelectedRevenueFile(json.savedAs); }
+                }
+              } finally { setUploading(false); e.target.value = ''; }
+            }} />
+          </label>
       </div>
 
       {revenueData && (() => {
@@ -2139,11 +2587,12 @@ export default function InsightsPage() {
           : n >= 1_000   ? `$${(n / 1_000).toFixed(0)}K`
           : `$${Math.round(n)}`;
 
-        // Build campaign → webinars lookup (all webinars for cross-ref)
+        // Build campaign → webinars lookup (respects tag filter)
         const campaignMap = new Map<string, WebinarSummary[]>();
-        for (const w of webinars) {
+        for (const w of filteredWebinars) {
           if (!w.campaignName) continue;
-          const keys = [w.campaignName, w.campaignName.replace(/\*[^*]*$/, '')];
+          const stripped = w.campaignName.replace(/\*[^*]*$/, '');
+          const keys = stripped === w.campaignName ? [w.campaignName] : [w.campaignName, stripped];
           for (const k of keys) {
             if (!campaignMap.has(k)) campaignMap.set(k, []);
             campaignMap.get(k)!.push(w);
@@ -2156,6 +2605,19 @@ export default function InsightsPage() {
 
         const getWon     = (p: ProgramRevenue) => isMT ? p.mtWon     : p.ftWon;
         const getCreated = (p: ProgramRevenue) => isMT ? p.mtCreated : p.ftCreated;
+
+        // Marketo lookup for Successes (MT) / New Names (FT)
+        const mktLabel = isMT ? 'Successes' : 'New Names';
+        const mktLookup = new Map<string, (typeof mktMatchedPrograms)[0]>();
+        for (const mp of mktMatchedPrograms) {
+          mktLookup.set(mp.programName, mp);
+          const s = mp.programName.replace(/\*[^*]*$/, '');
+          if (s !== mp.programName) mktLookup.set(s, mp);
+        }
+        const getMktVal = (name: string): number | null => {
+          const mp = mktLookup.get(name) ?? mktLookup.get(name.replace(/\*[^*]*$/, ''));
+          return mp ? (isMT ? mp.success : mp.newNames) : null;
+        };
 
         const allPrograms = [...revenueData.programs].sort((a, b) => (getWon(b) + getCreated(b)) - (getWon(a) + getCreated(a)));
         const matched = allPrograms.filter(p => getMatches(p.programName).length > 0);
@@ -2203,6 +2665,66 @@ export default function InsightsPage() {
               </Card>
             </div>
 
+            {/* Tag Word Cloud */}
+            {(() => {
+              // Aggregate Won + Created revenue per tag, from visible programs' matched webinars
+              const tagRevMap: Record<string, { won: number; created: number }> = {};
+              for (const p of visiblePrograms) {
+                const won     = getWon(p);
+                const created = getCreated(p);
+                if (won === 0 && created === 0) continue;
+                for (const w of getMatches(p.programName)) {
+                  for (const tag of (w.tags ?? [])) {
+                    if (!tagRevMap[tag]) tagRevMap[tag] = { won: 0, created: 0 };
+                    tagRevMap[tag].won     += won;
+                    tagRevMap[tag].created += created;
+                  }
+                }
+              }
+              const tagEntries = Object.entries(tagRevMap).sort((a, b) => b[1].won - a[1].won);
+              if (tagEntries.length === 0) return null;
+
+              const maxWon = Math.max(...tagEntries.map(([, v]) => v.won), 1);
+              const minWon = Math.min(...tagEntries.filter(([, v]) => v.won > 0).map(([, v]) => v.won), maxWon);
+              const logT = (val: number) => {
+                if (maxWon === minWon) return 0.5;
+                const logV = Math.log(val + 1), logMin = Math.log(minWon + 1), logMax = Math.log(maxWon + 1);
+                return Math.max(0, Math.min(1, (logV - logMin) / (logMax - logMin)));
+              };
+
+              return (
+                <Card className="px-4 py-4" accent="teal">
+                  <SectionLabel tip={`Tags associated with ${attrLabel} revenue. Size and colour intensity reflect Won revenue — largest tags drive the most attributed revenue. Respects the FT/MT and Matched/All toggles above.`}>
+                    Tags by Revenue
+                  </SectionLabel>
+                  <div className="flex flex-wrap gap-x-3 gap-y-2 mt-3 items-baseline leading-relaxed">
+                    {tagEntries.map(([tag, rev]) => {
+                      const t    = logT(rev.won);
+                      const size = Math.round(11 + t * 17); // 11px → 28px
+                      const wt   = t > 0.65 ? 800 : t > 0.35 ? 600 : 400;
+                      const g    = Math.round(80 + (1 - t) * 120);  // darker green for more revenue
+                      const color = `rgb(5, ${g}, 80)`;
+                      return (
+                        <span
+                          key={tag}
+                          title={`${tag}\n${attrLabel} Won: ${fmtRev(rev.won)}\n${attrLabel} Created: ${fmtRev(rev.created)}`}
+                          className="cursor-default select-none transition-all hover:opacity-80"
+                          style={{ fontSize: `${size}px`, fontWeight: wt, color, lineHeight: 1.3 }}
+                        >
+                          {tag}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-100">
+                    <span className="text-[9px] text-gray-400 shrink-0">More revenue</span>
+                    <div className="flex-1 h-1 rounded-full" style={{ background: 'linear-gradient(to right, rgb(5,80,80), rgb(5,200,80,0.25))' }} />
+                    <span className="text-[9px] text-gray-400 shrink-0">Less revenue</span>
+                  </div>
+                </Card>
+              );
+            })()}
+
             {/* Programs table */}
             <Card className="px-4 py-4" accent="teal">
               <SectionLabel tip={`${attrLabel} attribution: credit × Amount USD = attributed revenue. ${revShowAll ? 'All programs shown.' : 'Showing only programs matched to ON24 campaign codes.'} Sorted by ${attrLabel} Won + Created.`}>
@@ -2217,7 +2739,8 @@ export default function InsightsPage() {
                       <tr className="border-b border-gray-200">
                         <th className="pb-2 text-left text-[9px] font-bold uppercase tracking-wider text-ansell-gray w-6">#</th>
                         <th className="pb-2 text-left text-[9px] font-bold uppercase tracking-wider text-ansell-gray">Program Name</th>
-                        <th className="pb-2 text-right text-[9px] font-bold uppercase tracking-wider text-sky-600">{isMT ? 'MT' : 'FT'} Created</th>
+                        <th className="pb-2 text-right text-[9px] font-bold uppercase tracking-wider text-purple-600 pl-4">{mktLabel}</th>
+                        <th className="pb-2 text-right text-[9px] font-bold uppercase tracking-wider text-sky-600 pl-4">{isMT ? 'MT' : 'FT'} Created</th>
                         <th className="pb-2 text-right text-[9px] font-bold uppercase tracking-wider text-emerald-600 pl-4">{isMT ? 'MT' : 'FT'} Won</th>
                       </tr>
                     </thead>
@@ -2245,8 +2768,15 @@ export default function InsightsPage() {
                                   {matches.length > 2 && <span className="text-emerald-400">+{matches.length - 2} more</span>}
                                 </div>
                               )}
+                              {p.opportunityIds && p.opportunityIds.length > 0 && (
+                                <div className="text-[9px] text-gray-400 mt-0.5 font-mono truncate" title={p.opportunityIds.join(', ')}>
+                                  {p.opportunityIds.slice(0, 3).join(' · ')}
+                                  {p.opportunityIds.length > 3 && <span className="text-gray-300"> +{p.opportunityIds.length - 3}</span>}
+                                </div>
+                              )}
                             </td>
-                            <td className="py-2 text-right text-[11px] text-sky-700">{created > 0 ? fmtRev(created) : '—'}</td>
+                            <td className="py-2 text-right text-[11px] text-purple-700 pl-4">{(() => { const v = getMktVal(p.programName); return v !== null && v > 0 ? fmtNum(v) : '—'; })()}</td>
+                            <td className="py-2 text-right text-[11px] text-sky-700 pl-4">{created > 0 ? fmtRev(created) : '—'}</td>
                             <td className="py-2 text-right text-[11px] font-semibold text-emerald-700 pl-4">{won > 0 ? fmtRev(won) : '—'}</td>
                           </tr>
                         );

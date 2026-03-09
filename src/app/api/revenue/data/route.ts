@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import { readFile, readdir, existsSync } from 'fs';
 import { promisify } from 'util';
@@ -12,6 +12,7 @@ export const dynamic = 'force-dynamic';
 export interface ProgramRevenue {
   programName: string;
   opportunityCount: number;      // unique opportunity IDs
+  opportunityIds: string[];      // first 20 unique opp IDs
   ftCreated: number;             // sum(credit × amountUSD)
   ftWon: number;
   mtCreated: number;
@@ -45,7 +46,7 @@ async function getLatestXlsx(): Promise<{ filePath: string; fileName: string; fi
   if (!existsSync(REPORTS_DIR)) return null;
   const allFiles = await readdirAsync(REPORTS_DIR);
   const files = allFiles
-    .filter(f => f.endsWith('.xlsx') && !f.startsWith('~$'))
+    .filter(f => f.endsWith('.xlsx') && !f.startsWith('~$') && !/program\s*membership/i.test(f))
     .sort((a, b) => extractDate(b).localeCompare(extractDate(a)));
   if (files.length === 0) return null;
   const fileName = files[0];
@@ -56,12 +57,29 @@ async function getLatestXlsx(): Promise<{ filePath: string; fileName: string; fi
   };
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const latest = await getLatestXlsx();
-    if (!latest) {
+    const { searchParams } = new URL(req.url);
+    const fileParam = searchParams.get('file');
+
+    let target: { filePath: string; fileName: string; fileDate: string } | null;
+    if (fileParam) {
+      if (fileParam.includes('/') || fileParam.includes('\\') || fileParam.includes('..')) {
+        return NextResponse.json({ error: 'Invalid filename' }, { status: 400 });
+      }
+      const filePath = path.join(REPORTS_DIR, fileParam);
+      if (!existsSync(filePath)) {
+        return NextResponse.json({ error: `File "${fileParam}" not found` }, { status: 404 });
+      }
+      target = { filePath, fileName: fileParam, fileDate: extractDate(fileParam) };
+    } else {
+      target = await getLatestXlsx();
+    }
+
+    if (!target) {
       return NextResponse.json({ error: 'No report file found in /reports directory' }, { status: 404 });
     }
+    const latest = target;
 
     // Read as buffer to avoid Windows/OneDrive file-lock issues with XLSX.readFile
     let buffer: Buffer;
@@ -146,6 +164,7 @@ export async function GET() {
       programs.push({
         programName,
         opportunityCount: entry.oppIds.size,
+        opportunityIds: Array.from(entry.oppIds).slice(0, 20),
         ftCreated: Math.round(entry.ftCreated * 100) / 100,
         ftWon: Math.round(entry.ftWon * 100) / 100,
         mtCreated: Math.round(entry.mtCreated * 100) / 100,
