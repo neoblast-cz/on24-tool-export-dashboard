@@ -3,7 +3,6 @@ node_modules
 .env.local
 .git
 *.md
-nul
 *.txt
 .claude
 DESIGN.md

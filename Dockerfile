@@ -6,7 +6,7 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-RUN npm run build
+RUN mkdir -p reports && npm run build
 
 # Stage 2 — production image
 FROM node:20-alpine AS runner

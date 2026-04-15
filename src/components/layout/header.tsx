@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useWebinarStore } from '@/store/webinar-store';
 
 function getDatePresets(): { label: string; start: string; end: string }[] {
@@ -53,14 +53,7 @@ function AnsellLogo() {
 
 export function Header() {
   const pathname = usePathname();
-  const router = useRouter();
   const { filterStartDate, filterEndDate, filterActivePreset, setDateFilter, applyDateFilter } = useWebinarStore();
-
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
-    router.refresh();
-  };
 
   const startDate    = filterStartDate    || DEFAULT_PRESET.start;
   const endDate      = filterEndDate      || DEFAULT_PRESET.end;
@@ -80,18 +73,6 @@ export function Header() {
             </h1>
             <p className="text-[11px] text-ansell-gray mt-1">Ansell Healthcare · On24 Dashboard</p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-ansell-gray border border-gray-200 hover:border-gray-400 hover:text-ansell-dark transition-colors"
-            title="Sign out"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-            Sign out
-          </button>
         </div>
       </header>
 

@@ -20,9 +20,6 @@ ON24_CLIENT_ID=         # On24 account ID
 ON24_TOKEN_KEY=         # On24 API token key
 ON24_TOKEN_SECRET=      # On24 API token secret
 ON24_API_BASE_URL=      # https://api.on24.com/v2  (use api.eu.on24.com/v2 for EU)
-AUTH_USERNAME=          # Dashboard login username
-AUTH_PASSWORD=          # Dashboard login password
-AUTH_SESSION_TOKEN=     # Session signing secret
 CACHE_TTL_HOURS=24      # Optional, defaults to 24
 ```
 
