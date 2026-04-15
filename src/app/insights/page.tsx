@@ -747,6 +747,8 @@ export default function InsightsPage() {
   const revenueRef = useRef(false);
   const [revAttribution, setRevAttribution] = useState<'mt' | 'ft'>('mt');
   const [revShowAll, setRevShowAll] = useState(false);
+  const [revSort, setRevSort] = useState<{ col: 'name' | 'mkt' | 'created' | 'won'; dir: 'asc' | 'desc' }>({ col: 'won', dir: 'desc' });
+  const toggleRevSort = (col: typeof revSort.col) => setRevSort(s => ({ col, dir: s.col === col && s.dir === 'desc' ? 'asc' : 'desc' }));
 
   // Marketo Program Membership
   const [marketoData, setMarketoData] = useState<MarketoData | null>(null);
@@ -860,6 +862,7 @@ export default function InsightsPage() {
   });
 
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  const [nameQuery, setNameQuery] = useState('');
   const toggleTag = (tag: string) => setSelectedTags(prev => {
     const next = new Set(prev);
     next.has(tag) ? next.delete(tag) : next.add(tag);
@@ -884,17 +887,22 @@ export default function InsightsPage() {
   );
 
   const excluded = useMemo(() => {
-    const tests = liveWebinars.filter(w => w.isTest).length;
+    const testEvents = liveWebinars.filter(w => w.isTest);
+    const otherEvents = liveWebinars.filter(w => !w.isTest && !ANALYSIS_TYPES.has((w.eventType || '').toLowerCase()));
     const otherMap = new Map<string, number>();
-    for (const w of liveWebinars) {
-      if (!w.isTest && !ANALYSIS_TYPES.has((w.eventType || '').toLowerCase())) {
-        const t = w.eventType || 'Unknown';
-        otherMap.set(t, (otherMap.get(t) || 0) + 1);
-      }
+    for (const w of otherEvents) {
+      const t = w.eventType || 'Unknown';
+      otherMap.set(t, (otherMap.get(t) || 0) + 1);
     }
     const otherTypes = Array.from(otherMap.entries());
-    const otherTotal = otherTypes.reduce((s, [, c]) => s + c, 0);
-    return { tests, otherTypes, otherTotal, total: tests + otherTotal };
+    return {
+      events: [...testEvents, ...otherEvents],
+      getreason: (w: typeof liveWebinars[0]) => w.isTest ? 'test event' : (w.eventType || 'unknown type'),
+      tests: testEvents.length,
+      otherTypes,
+      otherTotal: otherEvents.length,
+      total: testEvents.length + otherEvents.length,
+    };
   }, [liveWebinars]);
 
   // Key that changes whenever the set of event IDs changes (more reliable than just .length)
@@ -922,13 +930,15 @@ export default function InsightsPage() {
     return [...set].sort();
   }, [webinars]);
 
-  // Events filtered by selected tags (empty = show all)
-  const filteredWebinars = useMemo(() =>
-    selectedTags.size === 0
-      ? webinars
-      : webinars.filter(w => (w.tags || []).some(t => selectedTags.has(t))),
-    [webinars, selectedTags],
-  );
+  // Events filtered by selected tags + name/code search
+  const filteredWebinars = useMemo(() => {
+    const q = nameQuery.trim().toLowerCase();
+    return webinars.filter(w => {
+      if (selectedTags.size > 0 && !(w.tags || []).some(t => selectedTags.has(t))) return false;
+      if (q && !w.webinarName.toLowerCase().includes(q) && !(w.campaignName || '').toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [webinars, selectedTags, nameQuery]);
 
   // Auto-load metrics for events that don't have them yet
   useEffect(() => {
@@ -1418,9 +1428,9 @@ export default function InsightsPage() {
         </div>
       </div>
 
-      {/* Tag filter */}
-      {allTags.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
+      {/* Tag filter + search */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {allTags.length > 0 && <>
           <span className="text-[10px] font-bold uppercase tracking-wider text-ansell-gray shrink-0">Filter by tag</span>
           {allTags.map(tag => {
             const active = selectedTags.has(tag);
@@ -1448,8 +1458,24 @@ export default function InsightsPage() {
               Clear all
             </button>
           )}
+          <span className="mx-1 text-gray-300 select-none">|</span>
+        </>}
+        <div className="relative">
+          <input
+            type="text"
+            value={nameQuery}
+            onChange={e => setNameQuery(e.target.value)}
+            placeholder="search name or code…"
+            className="px-2 py-0.5 border border-gray-300 text-[11px] w-48 focus:outline-none focus:ring-1 focus:ring-ansell-teal placeholder-gray-300"
+          />
+          {nameQuery && (
+            <button
+              onClick={() => setNameQuery('')}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-[13px] leading-none"
+            >×</button>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Event IDs toggle */}
       {webinars.length > 0 && (
@@ -1461,7 +1487,7 @@ export default function InsightsPage() {
             <svg className={`w-3 h-3 transition-transform ${showEventIds ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            Event IDs ({filteredWebinars.length}{filteredWebinars.length !== webinars.length ? ` of ${webinars.length}` : ''} events{selectedTags.size > 0 ? ' · filtered by tag' : ''})
+            Event IDs ({filteredWebinars.length}{filteredWebinars.length !== webinars.length ? ` of ${webinars.length}` : ''} events{selectedTags.size > 0 ? ' · filtered by tag' : ''}{nameQuery.trim() ? ' · search active' : ''}{excluded.total > 0 ? ` · ${excluded.total} excluded` : ''})
           </button>
           {showEventIds && (
             <div className="mt-2 border border-gray-200 bg-gray-50 p-3 max-h-64 overflow-y-auto">
@@ -1475,13 +1501,29 @@ export default function InsightsPage() {
                   <>
                     <span key={`id-${w.eventId}`} className="font-mono text-ansell-blue shrink-0">{w.eventId}</span>
                     <span key={`name-${w.eventId}`} className="text-gray-700 truncate">
-                      <EventNamePopover eventId={w.eventId} name={w.webinarName} campaignName={w.campaignName} display={truncate(w.webinarName, 50)} />
+                      <EventNamePopover eventId={w.eventId} name={w.webinarName} campaignName={w.campaignName} display={isExporting ? w.webinarName : truncate(w.webinarName, 50)} />
                     </span>
                     <span key={`camp-${w.eventId}`} className="text-gray-500 font-mono text-[9px] truncate" title={w.campaignName}>{w.campaignName || '—'}</span>
                     <span key={`type-${w.eventId}`} className="text-gray-400 shrink-0 capitalize">{w.eventType || '—'}</span>
                     <span key={`date-${w.eventId}`} className="text-gray-400 shrink-0 font-mono">{w.date}</span>
                   </>
                 ))}
+                {excluded.events.length > 0 && (
+                  <>
+                    <span className="col-span-5 pt-2 pb-1 text-[9px] font-bold uppercase tracking-wider text-gray-300 border-t border-gray-200 mt-1">
+                      Excluded ({excluded.total})
+                    </span>
+                    {excluded.events.map(w => (
+                      <>
+                        <span key={`id-${w.eventId}`} className="font-mono text-gray-300 shrink-0">{w.eventId}</span>
+                        <span key={`name-${w.eventId}`} className="text-gray-300 truncate">{truncate(w.webinarName, 50)}</span>
+                        <span key={`camp-${w.eventId}`} className="text-gray-300 font-mono text-[9px] truncate">{w.campaignName || '—'}</span>
+                        <span key={`type-${w.eventId}`} className="text-gray-300 shrink-0 capitalize">{excluded.getreason(w)}</span>
+                        <span key={`date-${w.eventId}`} className="text-gray-300 shrink-0 font-mono">{w.date}</span>
+                      </>
+                    ))}
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -1490,7 +1532,7 @@ export default function InsightsPage() {
 
       {/* ── Cross-Findings ──────────────────────────────────────────────────── */}
       {crossFindings.length > 0 && (
-        <Card className="px-4 py-4" accent="purple">
+        <Card className="px-4 py-4" accent="gray">
           <SectionLabel tip="Statistical comparisons computed across all events. Only shown when the difference is ≥3 percentage points (for rates) or ≥0.3 engagement points (out of 10) — to filter noise from small samples.">
             Cross-Findings
           </SectionLabel>
@@ -1530,10 +1572,10 @@ export default function InsightsPage() {
           {
             key: 'setup' as const,
             label: 'Setup',
-            color: '#7030A0',
-            bigStat: marketoStatus === 'done' ? fmtNum(mktMatchedPrograms.length) : (marketoStatus === 'loading' ? '…' : '—'),
-            bigStatLabel: 'matched programs',
-            smallStat: marketoStatus === 'done' && marketoData ? `${marketoData.programs.length} programs · ${marketoData.fileDate}` : (marketoStatus === 'error' ? 'no file found' : 'upload Marketo report'),
+            color: '#0891b2',
+            bigStat: fmtNum(filteredWebinars.length),
+            bigStatLabel: 'events analysed',
+            smallStat: marketoStatus === 'done' && marketoData ? `${mktMatchedPrograms.length} matched · ${marketoData.fileDate}` : (marketoStatus === 'error' ? 'no marketo file' : 'upload Marketo report'),
           },
           {
             key: 'registration' as const,
@@ -1614,6 +1656,7 @@ export default function InsightsPage() {
       {/* ════════════════════════════ SETUP ══════════════════════════════ */}
       {(activeSection === 'setup' || isExporting) && (
       <div className="space-y-6">
+      {isExporting && <div className="pt-6 pb-3 flex items-center gap-3"><div className="w-1 h-7 shrink-0" style={{background:'#0891b2'}} /><p className="text-[18px] font-extrabold uppercase tracking-[0.18em] text-ansell-dark">Setup</p></div>}
 
       {/* Marketo Program Membership */}
       <Card className="px-4 py-4" accent="blue">
@@ -1621,7 +1664,7 @@ export default function InsightsPage() {
           <SectionLabel tip="Marketo Program Membership report. Members = all invitees (conversion denominator). New Names = net-new leads identified. Success = attended, watched on-demand, or asked to be contacted.">
             Marketo Program Membership
           </SectionLabel>
-          <div className="flex items-center flex-wrap gap-2">
+          {!isExporting && <div className="flex items-center flex-wrap gap-2">
               {marketoFiles.length > 0 && (
                 <select
                   value={selectedMarketoFile ?? ''}
@@ -1682,7 +1725,7 @@ export default function InsightsPage() {
                   } finally { setMarketoUploading(false); e.target.value = ''; }
                 }} />
               </label>
-          </div>
+          </div>}
         </div>
 
         {mktMatchedPrograms.length > 0 && (() => {
@@ -1795,10 +1838,11 @@ export default function InsightsPage() {
       {/* ════════════════════════════ REGISTRATION ══════════════════════════════ */}
       {(activeSection === 'registration' || isExporting) && (
       <div className="space-y-6">
+      {isExporting && <div className="pt-6 pb-3 flex items-center gap-3"><div className="w-1 h-7 bg-ansell-blue shrink-0" /><p className="text-[18px] font-extrabold uppercase tracking-[0.18em] text-ansell-dark">Registration</p></div>}
 
       {/* Registration Sources */}
       <Card className="px-4 py-4" accent="blue">
-        {sourcesStatus === 'done' && (
+        {sourcesStatus === 'done' && !isExporting && (
           <div className="flex flex-wrap gap-1.5 mb-4">
             {SOURCE_FIELDS.map(field => {
               const bd = breakdowns[field];
@@ -1893,6 +1937,7 @@ export default function InsightsPage() {
       {/* ════════════════════════════ ATTENDANCE ════════════════════════════════ */}
       {(activeSection === 'attendance' || isExporting) && (
       <div className="space-y-6">
+      {isExporting && <div className="pt-6 pb-3 flex items-center gap-3"><div className="w-1 h-7 bg-ansell-teal shrink-0" /><p className="text-[18px] font-extrabold uppercase tracking-[0.18em] text-ansell-dark">Attendance</p></div>}
 
       {/* Attendance KPIs */}
       <div>
@@ -1963,7 +2008,7 @@ export default function InsightsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8">
             {topAtt.map((w, i) => (
               <HBar key={w.eventId}
-                label={<EventNamePopover eventId={w.eventId} name={w.webinarName} campaignName={w.campaignName} display={`${i + 1}. ${truncate(w.webinarName, 50)}`} />}
+                label={<EventNamePopover eventId={w.eventId} name={w.webinarName} campaignName={w.campaignName} display={`${i + 1}. ${isExporting ? w.webinarName : truncate(w.webinarName, 50)}`} />}
                 value={getAttRate(w)} max={1} color="#00A28F" suffix="%"
                 sub={`${fmtNum(getAtt(w))} of ${fmtNum(getReg(w))} registered`} />
             ))}
@@ -2015,6 +2060,7 @@ export default function InsightsPage() {
       {/* ════════════════════════════ ENGAGEMENT ════════════════════════════════ */}
       {(activeSection === 'engagement' || isExporting) && (
       <div className="space-y-6">
+      {isExporting && <div className="pt-6 pb-3 flex items-center gap-3"><div className="w-1 h-7 bg-ansell-purple shrink-0" style={{background:'#7030A0'}} /><p className="text-[18px] font-extrabold uppercase tracking-[0.18em] text-ansell-dark">Engagement</p></div>}
 
       {/* Engagement KPIs */}
       <div>
@@ -2176,7 +2222,7 @@ export default function InsightsPage() {
                     </div>
                   </div>
                 ))}
-                {topResources.length > 5 && (
+                {topResources.length > 5 && !isExporting && (
                   <button onClick={() => setResourcesExpanded(v => !v)}
                     className="mt-1 text-[10px] text-gray-400 hover:text-gray-600 transition-colors">
                     {resourcesExpanded ? '▲ Show less' : `▼ Show all ${topResources.length} resources`}
@@ -2209,7 +2255,7 @@ export default function InsightsPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                             </svg>
                             <EventNamePopover eventId={w.eventId} name={w.webinarName} campaignName={w.campaignName}
-                              display={<span className="text-[11px] font-medium text-gray-800 truncate block">{truncate(w.webinarName, 40)}</span>} />
+                              display={<span className="text-[11px] font-medium text-gray-800 block">{isExporting ? w.webinarName : truncate(w.webinarName, 40)}</span>} />
                           </span>
                           <span className="text-[11px] font-semibold text-violet-700 shrink-0">{total}</span>
                         </div>
@@ -2302,7 +2348,7 @@ export default function InsightsPage() {
           </SectionLabel>
           {topEngagers.map((w, i) => (
             <HBar key={w.eventId}
-              label={<EventNamePopover eventId={w.eventId} name={w.webinarName} campaignName={w.campaignName} display={`${i + 1}. ${truncate(w.webinarName, 52)}`} />}
+              label={<EventNamePopover eventId={w.eventId} name={w.webinarName} campaignName={w.campaignName} display={`${i + 1}. ${isExporting ? w.webinarName : truncate(w.webinarName, 52)}`} />}
               value={getEng(w)} max={maxEng} color="#00A28F"
               sub={`score ${fmtEng(getEng(w))} · ${fmtNum(getAtt(w))} att · ${fmtPct(getAttRate(w))} rate`} />
           ))}
@@ -2313,7 +2359,7 @@ export default function InsightsPage() {
           </SectionLabel>
           {bottomEngagers.map((w, i) => (
             <HBar key={w.eventId}
-              label={<EventNamePopover eventId={w.eventId} name={w.webinarName} campaignName={w.campaignName} display={`${i + 1}. ${truncate(w.webinarName, 52)}`} />}
+              label={<EventNamePopover eventId={w.eventId} name={w.webinarName} campaignName={w.campaignName} display={`${i + 1}. ${isExporting ? w.webinarName : truncate(w.webinarName, 52)}`} />}
               value={getEng(w)} max={maxEng} color="#DC2626"
               sub={`score ${fmtEng(getEng(w))} · ${fmtNum(getAtt(w))} att · ${fmtPct(getAttRate(w))} rate`} />
           ))}
@@ -2396,14 +2442,14 @@ export default function InsightsPage() {
                           {displayed.map((w, i) => (
                             <div key={w.eventId}>
                               <HBar
-                                label={<EventNamePopover eventId={w.eventId} name={w.webinarName} campaignName={w.campaignName} display={`${i + 1}. ${truncate(w.webinarName, 42)}`} />}
+                                label={<EventNamePopover eventId={w.eventId} name={w.webinarName} campaignName={w.campaignName} display={`${i + 1}. ${isExporting ? w.webinarName : truncate(w.webinarName, 42)}`} />}
                                 value={getValue(w)} max={maxVal} color={color} sub={getSub(w)} />
                               {key === 'reactions' && (
                                 <StackedReactionBar byType={w.attendeeMetrics?.reactionsByType ?? {}} total={getReactions(w)} />
                               )}
                             </div>
                           ))}
-                          {items.length > PREVIEW && (
+                          {items.length > PREVIEW && !isExporting && (
                             <button
                               onClick={() => toggleLeader(key)}
                               className="mt-2 text-[10px] text-gray-400 hover:text-gray-600 transition-colors"
@@ -2514,9 +2560,10 @@ export default function InsightsPage() {
       {/* ════════════════════════════ REVENUE ════════════════════════════════════ */}
       {(activeSection === 'revenue' || isExporting) && (
       <div className="space-y-6">
+      {isExporting && <div className="pt-6 pb-3 flex items-center gap-3"><div className="w-1 h-7 bg-emerald-600 shrink-0" /><p className="text-[18px] font-extrabold uppercase tracking-[0.18em] text-ansell-dark">Revenue</p></div>}
 
       {/* File bar + upload */}
-      <div className="flex items-center flex-wrap gap-2 px-1">
+      {!isExporting && <div className="flex items-center flex-wrap gap-2 px-1">
           {revenueFiles.length > 0 && (
             <select
               value={selectedRevenueFile ?? ''}
@@ -2577,7 +2624,7 @@ export default function InsightsPage() {
               } finally { setUploading(false); e.target.value = ''; }
             }} />
           </label>
-      </div>
+      </div>}
 
       {revenueData && (() => {
         const t = revenueData.totals;
@@ -2621,16 +2668,24 @@ export default function InsightsPage() {
 
         const allPrograms = [...revenueData.programs].sort((a, b) => (getWon(b) + getCreated(b)) - (getWon(a) + getCreated(a)));
         const matched = allPrograms.filter(p => getMatches(p.programName).length > 0);
-        const visiblePrograms = revShowAll ? allPrograms : matched;
+        const basePrograms = revShowAll ? allPrograms : matched;
+        const visiblePrograms = [...basePrograms].sort((a, b) => {
+          const dir = revSort.dir === 'asc' ? 1 : -1;
+          if (revSort.col === 'name') return dir * a.programName.localeCompare(b.programName);
+          if (revSort.col === 'mkt') return dir * ((getMktVal(b.programName) ?? -1) - (getMktVal(a.programName) ?? -1));
+          if (revSort.col === 'created') return dir * (getCreated(b) - getCreated(a));
+          return dir * (getWon(b) - getWon(a));
+        });
 
         const wonTotal     = visiblePrograms.reduce((s, p) => s + getWon(p), 0);
         const createdTotal = visiblePrograms.reduce((s, p) => s + getCreated(p), 0);
+        const mktTotal     = visiblePrograms.reduce((s, p) => { const v = getMktVal(p.programName); return s + (v ?? 0); }, 0);
         const attrLabel    = isMT ? 'Multi-Touch' : 'First-Touch';
 
         return (
           <>
             {/* Toggles */}
-            <div className="flex flex-wrap gap-4 items-center">
+            {!isExporting && <div className="flex flex-wrap gap-4 items-center">
               {/* FT / MT */}
               <div className="flex">
                 {(['mt', 'ft'] as const).map(v => (
@@ -2649,7 +2704,7 @@ export default function InsightsPage() {
                   </button>
                 ))}
               </div>
-            </div>
+            </div>}
 
             {/* KPI cards */}
             <div className="grid grid-cols-2 gap-4">
@@ -2738,10 +2793,18 @@ export default function InsightsPage() {
                     <thead>
                       <tr className="border-b border-gray-200">
                         <th className="pb-2 text-left text-[9px] font-bold uppercase tracking-wider text-ansell-gray w-6">#</th>
-                        <th className="pb-2 text-left text-[9px] font-bold uppercase tracking-wider text-ansell-gray">Program Name</th>
-                        <th className="pb-2 text-right text-[9px] font-bold uppercase tracking-wider text-purple-600 pl-4">{mktLabel}</th>
-                        <th className="pb-2 text-right text-[9px] font-bold uppercase tracking-wider text-sky-600 pl-4">{isMT ? 'MT' : 'FT'} Created</th>
-                        <th className="pb-2 text-right text-[9px] font-bold uppercase tracking-wider text-emerald-600 pl-4">{isMT ? 'MT' : 'FT'} Won</th>
+                        {([
+                          { col: 'name' as const,    label: 'Program Name',              cls: 'text-left text-ansell-gray',  extra: '' },
+                          { col: 'mkt' as const,     label: mktLabel,                    cls: 'text-right text-purple-600',  extra: 'pl-4' },
+                          { col: 'created' as const, label: `${isMT ? 'MT' : 'FT'} Created`, cls: 'text-right text-sky-600', extra: 'pl-4' },
+                          { col: 'won' as const,     label: `${isMT ? 'MT' : 'FT'} Won`, cls: 'text-right text-emerald-600', extra: 'pl-4' },
+                        ]).map(({ col, label, cls, extra }) => (
+                          <th key={col} onClick={() => toggleRevSort(col)}
+                            className={`pb-2 text-[9px] font-bold uppercase tracking-wider cursor-pointer select-none hover:opacity-70 transition-opacity ${cls} ${extra}`}>
+                            {label}
+                            {revSort.col === col && <span className="ml-1">{revSort.dir === 'desc' ? '↓' : '↑'}</span>}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
@@ -2751,8 +2814,8 @@ export default function InsightsPage() {
                         const created = getCreated(p);
                         return (
                           <tr key={p.programName} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                            <td className="py-2 pr-2 text-[10px] text-gray-400 text-right">{i + 1}</td>
-                            <td className="py-2 pr-4 max-w-0 w-full">
+                            <td className="py-2 pr-2 text-[10px] text-gray-400 text-right align-top">{i + 1}</td>
+                            <td className="py-2 pr-4 max-w-0 w-full align-top">
                               <div className="truncate text-[11px] text-gray-800 font-medium" title={p.programName}>
                                 {p.programName}
                               </div>
@@ -2762,26 +2825,34 @@ export default function InsightsPage() {
                                     <span key={w.eventId} className="inline-flex items-center gap-0.5">
                                       {mi > 0 && <span className="text-emerald-300">·</span>}
                                       <EventNamePopover eventId={w.eventId} name={w.webinarName} campaignName={w.campaignName}
-                                        display={<span className="underline decoration-dotted cursor-pointer">{truncate(w.webinarName, 35)}</span>} />
+                                        display={<span className="underline decoration-dotted cursor-pointer">{isExporting ? w.webinarName : truncate(w.webinarName, 35)}</span>} />
                                     </span>
                                   ))}
                                   {matches.length > 2 && <span className="text-emerald-400">+{matches.length - 2} more</span>}
                                 </div>
                               )}
                               {p.opportunityIds && p.opportunityIds.length > 0 && (
-                                <div className="text-[9px] text-gray-400 mt-0.5 font-mono truncate" title={p.opportunityIds.join(', ')}>
-                                  {p.opportunityIds.slice(0, 3).join(' · ')}
-                                  {p.opportunityIds.length > 3 && <span className="text-gray-300"> +{p.opportunityIds.length - 3}</span>}
+                                <div className="text-[9px] text-gray-400 mt-0.5 font-mono leading-relaxed">
+                                  {p.opportunityIds.join(' · ')}
                                 </div>
                               )}
                             </td>
-                            <td className="py-2 text-right text-[11px] text-purple-700 pl-4">{(() => { const v = getMktVal(p.programName); return v !== null && v > 0 ? fmtNum(v) : '—'; })()}</td>
-                            <td className="py-2 text-right text-[11px] text-sky-700 pl-4">{created > 0 ? fmtRev(created) : '—'}</td>
-                            <td className="py-2 text-right text-[11px] font-semibold text-emerald-700 pl-4">{won > 0 ? fmtRev(won) : '—'}</td>
+                            <td className="py-2 text-right text-[11px] text-purple-700 pl-4 align-top">{(() => { const v = getMktVal(p.programName); return v !== null && v > 0 ? fmtNum(v) : '—'; })()}</td>
+                            <td className="py-2 text-right text-[11px] text-sky-700 pl-4 align-top">{created > 0 ? fmtRev(created) : '—'}</td>
+                            <td className="py-2 text-right text-[11px] font-semibold text-emerald-700 pl-4 align-top">{won > 0 ? fmtRev(won) : '—'}</td>
                           </tr>
                         );
                       })}
                     </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-gray-300">
+                        <td />
+                        <td className="py-2 pr-4 text-[10px] font-bold text-gray-600">Total ({visiblePrograms.length} programs)</td>
+                        <td className="py-2 text-right text-[11px] font-bold text-purple-700 pl-4">{mktTotal > 0 ? fmtNum(mktTotal) : '—'}</td>
+                        <td className="py-2 text-right text-[11px] font-bold text-sky-700 pl-4">{createdTotal > 0 ? fmtRev(createdTotal) : '—'}</td>
+                        <td className="py-2 text-right text-[11px] font-bold text-emerald-700 pl-4">{wonTotal > 0 ? fmtRev(wonTotal) : '—'}</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               )}

@@ -64,7 +64,7 @@ export function Header() {
 
   const startDate    = filterStartDate    || DEFAULT_PRESET.start;
   const endDate      = filterEndDate      || DEFAULT_PRESET.end;
-  const activePreset = filterActivePreset || DEFAULT_PRESET.label;
+  const activePreset = filterActivePreset;
 
   return (
     <>

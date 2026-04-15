@@ -62,7 +62,7 @@ export const useWebinarStore = create<WebinarState>()(
       liveCtaCounts: {},
       filterStartDate: '',
       filterEndDate: '',
-      filterActivePreset: '',
+      filterActivePreset: 'Last 30 days',
       filterVersion: 0,
 
       // Actions

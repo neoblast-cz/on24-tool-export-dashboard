@@ -1,9 +1,6 @@
 import type { Metadata } from 'next';
-import { Asap } from 'next/font/google';
 import './globals.css';
 import { Header } from '@/components/layout/header';
-
-const asap = Asap({ subsets: ['latin'], weight: ['400', '500', '600', '700'] });
 
 export const metadata: Metadata = {
   title: 'On24 Analytics Dashboard',
@@ -17,7 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={asap.className}>
+      <body>
         <div className="min-h-screen bg-gray-50">
           <Header />
           <main>{children}</main>

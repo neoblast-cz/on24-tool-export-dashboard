@@ -14,9 +14,12 @@
   --ansell-light-gray: #BBBCBC;
   --ansell-light: #f5f6f7;
   --accent-purple: #7030A0;
+  --danger-red: #c62828;
+  --warning-amber: #ef6c00;
 }
 
 body {
+  font-family: 'Asap', sans-serif;
   color: rgb(var(--foreground-rgb));
   background: var(--ansell-light);
   min-height: 100vh;
@@ -61,7 +64,7 @@ html, body, table, thead, tbody, tfoot, tr, col, colgroup {
 
 /* Ansell section label — mirrors CardTitle */
 .section-label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;

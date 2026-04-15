@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Highspot Analytics Hub | Ansell</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Asap:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Asap', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+            background-color: #f5f6f7;
+            color: #2C2A29;
+            min-height: 100vh;
+        }
+
+        :root {
+            --ansell-blue: #0063AC;
+            --ansell-teal: #00A28F;
+            --ansell-dark: #2C2A29;
+            --ansell-gray: #75787B;
+            --ansell-light-gray: #BBBCBC;
+            --accent-purple: #7030A0;
+        }
+
+        /* Header */
+        .header {
+            background: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 4px solid var(--ansell-blue);
+        }
+
+        .header-left { display: flex; align-items: center; gap: 20px; }
+
+        .header h1 {
+            font-size: 30px;
+            font-weight: bolder;
+            margin-bottom: 2px;
+            color: var(--ansell-dark);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .header h1 span { color: var(--ansell-blue); }
+        .header p { font-size: 12px; color: var(--ansell-gray); }
+
+        /* Main */
+        .main {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 40px 30px;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--ansell-gray);
+            margin-bottom: 16px;
+        }
+
+        /* Dashboard Cards */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        @media (max-width: 900px) { .dashboard-grid { grid-template-columns: 1fr; } }
+
+        .dash-card {
+            background: white;
+            padding: 28px 24px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            border-top: 5px solid var(--ansell-gray);
+            text-decoration: none;
+            color: var(--ansell-dark);
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .dash-card:hover {
+            box-shadow: 0 4px 16px rgba(0,0,0,0.13);
+            transform: translateY(-2px);
+        }
+
+        .dash-card.blue { border-top-color: var(--ansell-blue); }
+        .dash-card.teal { border-top-color: var(--ansell-teal); }
+        .dash-card.purple { border-top-color: var(--accent-purple); }
+
+        .dash-card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .dash-card.blue .dash-card-icon { background: #e8f1f8; color: var(--ansell-blue); }
+        .dash-card.teal .dash-card-icon { background: #e0f5f2; color: var(--ansell-teal); }
+        .dash-card.purple .dash-card-icon { background: #f0e8f7; color: var(--accent-purple); }
+
+        .dash-card-icon svg { width: 22px; height: 22px; }
+
+        .dash-card h2 {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .dash-card p {
+            font-size: 13px;
+            color: var(--ansell-gray);
+            line-height: 1.5;
+        }
+
+        .dash-card .data-file {
+            font-size: 11px;
+            color: var(--ansell-light-gray);
+            margin-top: auto;
+            padding-top: 8px;
+            border-top: 1px solid #f0f0f0;
+        }
+
+        .dash-card .data-file code {
+            background: #f5f6f7;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-size: 10px;
+        }
+
+        .dash-card .status-dot {
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+
+        .status-dot.ok { background: var(--ansell-teal); }
+        .status-dot.missing { background: #c62828; }
+
+        /* FAQ Section */
+        .faq-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            gap: 16px;
+        }
+
+        .faq-search-wrap {
+            position: relative;
+            width: 300px;
+        }
+
+        .faq-search {
+            width: 100%;
+            padding: 8px 12px 8px 32px;
+            border: 1px solid var(--ansell-light-gray);
+            font-size: 13px;
+            font-family: inherit;
+            background: white;
+        }
+
+        .faq-search:focus { outline: none; border-color: var(--ansell-blue); }
+
+        .faq-search-icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--ansell-light-gray);
+        }
+
+        .faq-search-icon svg { width: 14px; height: 14px; }
+
+        .faq-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            align-items: start;
+        }
+
+        @media (max-width: 900px) { .faq-grid { grid-template-columns: 1fr; } }
+
+        .faq-card {
+            background: white;
+            padding: 18px 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            border-left: 3px solid var(--ansell-blue);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .faq-card:hover {
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        }
+
+        @media (max-width: 900px) { .faq-card.expanded { grid-column: span 1; } }
+
+        .faq-card .faq-q {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--ansell-dark);
+            margin-bottom: 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .faq-card .faq-q .faq-icon {
+            flex-shrink: 0;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #e8f1f8;
+            color: var(--ansell-blue);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+            margin-top: 1px;
+        }
+
+        .faq-card .faq-a {
+            font-size: 12px;
+            color: var(--ansell-gray);
+            line-height: 1.6;
+            max-height: 0;
+            overflow: hidden;
+            margin-top: 0;
+            transition: max-height 0.35s ease, margin-top 0.35s ease;
+        }
+
+        .faq-card.expanded .faq-a {
+            max-height: 600px;
+            margin-top: 10px;
+        }
+
+        .faq-card .faq-tag {
+            display: inline-block;
+            padding: 1px 7px;
+            border-radius: 3px;
+            font-size: 9px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-top: 8px;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+
+        .faq-card .faq-tag:hover { opacity: 0.7; }
+
+        .faq-tag.data { background: #e8f1f8; color: var(--ansell-blue); }
+        .faq-tag.method { background: #e0f5f2; color: #007a6a; }
+        .faq-tag.howto { background: #f0e8f7; color: var(--accent-purple); }
+
+        .faq-tag-filters {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .faq-tag-btn {
+            padding: 3px 10px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.15s;
+            opacity: 0.5;
+        }
+
+        .faq-tag-btn.active { opacity: 1; border-color: currentColor; }
+        .faq-tag-btn.data { background: #e8f1f8; color: var(--ansell-blue); }
+        .faq-tag-btn.method { background: #e0f5f2; color: #007a6a; }
+        .faq-tag-btn.howto { background: #f0e8f7; color: var(--accent-purple); }
+
+        .faq-no-results {
+            grid-column: span 3;
+            text-align: center;
+            padding: 30px;
+            color: var(--ansell-gray);
+            font-size: 13px;
+        }
+
+        .faq-show-all {
+            margin-top: 12px;
+            text-align: center;
+        }
+
+        .faq-show-all button {
+            background: none;
+            border: none;
+            color: var(--ansell-blue);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 6px 16px;
+        }
+
+        .faq-show-all button:hover { text-decoration: underline; }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 30px;
+            color: var(--ansell-light-gray);
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-left">
+            <div class="ansell-logo">
+                <svg version="1.1" x="0px" y="0px" width="120px" height="37px" viewBox="0 0 446.028 137.747" xml:space="preserve">
+                    <g>
+                        <path fill-rule="evenodd" clip-rule="evenodd" fill="#0061AD" d="M313.973,83.691l9.064,11.105c-7.838,6.94-17.29,10.047-29.014,9.708c-10.473-0.302-18.345-3.009-23.277-8.931c-5.846-7.021-8.433-16.253-9.187-27.729c-0.791-11.999,2.876-21.513,8.614-28.46c5.757-6.947,13.624-10.889,23.59-10.411c9.251,0.445,17.296,1.575,22.724,10.25c4.286,6.849,6.837,16.55,6.837,29.175c0,1.409,0.032,4.314,0.032,4.314l-41.593-0.064c0.26,5.77,0.565,9.958,2.945,12.888c2.378,2.929,9.398,6.823,18.609,4.067C305.645,88.907,311.895,86.04,313.973,83.691z M282.647,58.423l20.682,0.222c-0.256-7.32,0.191-13.459-10.507-13.459c-4.005,0-7.341,1.469-8.628,3.399C282.27,51.474,282.521,54.637,282.647,58.423z"/>
+                        <path fill-rule="evenodd" clip-rule="evenodd" fill="#0061AD" d="M201.643,81.479c0.027,0.451,13.803,8.434,20.676,8.335c14.844-0.214,15.236-11.396,3.94-13.935c-3.005-0.676-5.845-1.304-7.619-1.786c-8.98-2.447-13.345-6.008-16.835-9.348c-7.606-7.28-3.681-23.062,3.554-29.316c5.091-4.4,10.84-6.565,19.539-6.601c16.939-0.07,27.239,6.368,27.239,6.368l-7.912,13.808c-0.07-0.805-15.992-5.433-19.889-4.734c-1.81,0.325-3.6,1.112-4.385,1.741c-0.644,0.515-1.674,2.115-1.674,4.377c0,2.932,0.254,3.881,9.435,6.116c2.094,0.51,3.763,0.915,5.001,1.224c9.172,2.299,14.527,5.523,17.888,8.771c3.347,3.236,4.121,7.571,4.121,13.479c0,8.357-3.898,14.253-8.27,18.397c-10.03,9.515-35.42,8.385-46.456,0.291c-1.931-1.416-5.021-2.832-4.718-3.47C195.995,93.693,197.035,90.685,201.643,81.479z"/>
+                        <path fill-rule="evenodd" clip-rule="evenodd" fill="#0061AD" d="M129.053,102.457V34.271l16.74-4.888l2.222,8.281c2.597-3.554,4.645-4.929,8.208-6.587c3.69-1.717,7.46-2.322,11.768-2.322c7.619,0,10.453,0.931,14.239,5.155c3.786,4.221,4.974,7.759,4.974,17.991v50.557h-19.35l0.444-44.433c-0.102-3.001-1.004-7.507-1.623-8.622c-1.363-2.455-4.373-3.922-8.137-3.838c-2.701,0.061-5.02,1.091-5.882,1.934c-2.581,2.521-3.808,6.358-3.808,11.333v43.626H129.053z"/>
+                        <path fill-rule="evenodd" clip-rule="evenodd" fill="#0061AD" d="M72.238,5.496h22.185l29.679,96.935l-21.505-0.443l-7.229-23.141H67.62l-6.591,23.584H40.793L72.238,5.496z M82.518,27.216l-9.833,35.293h18.819L82.518,27.216z"/>
+                        <path fill-rule="evenodd" clip-rule="evenodd" fill="#0061AD" d="M333.606,3.999c0.148,28.513,0.295,58.357,0.444,87.092c2.263,8.373,6.345,12.682,15.329,13.553l14.228-0.009l-1.786-14.21c-6.931,1.384-7.996-2.154-7.996-7.33L354.03,0L333.606,3.999z"/>
+                        <path fill-rule="evenodd" clip-rule="evenodd" fill="#0061AD" d="M370.071,3.999c0.148,28.513,0.295,58.357,0.444,87.092c2.264,8.373,6.345,12.682,15.331,13.553l13.996,0.223l-1.557-14.441c-6.93,1.384-7.996-2.154-7.996-7.33L390.956,0L370.071,3.999z"/>
+                        <path fill-rule="evenodd" clip-rule="evenodd" fill="#00A494" d="M59.885,117.309c40.828-5.293,80.378-8.487,120.143-7.019c28.077,1.035,58.089,3.309,87.814,4.795c22.219,1.038,49.768,2.964,74.651,3.11l30.218-0.444c25.442-1.676,51.674-5.894,71.539-9.774c0.592,1.036,1.185,2.073,1.778,3.109l-27.106,9.777c-29.96,10.718-61.096,13.329-94.647,14.662c-40.11,0.829-79.411-2.152-118.642-4.443c-60.116-2.983-132.096-12.43-191.517,3.11l-12.442,3.554C-10.292,126.896,45.331,119.566,59.885,117.309z"/>
+                    </g>
+                </svg>
+            </div>
+            <div>
+                <h1>Highspot <span>Analytics Hub</span></h1>
+                <p>Ansell Global Highspot Dashboard Suite</p>
+            </div>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="section-title">Dashboards</div>
+        <div class="dashboard-grid">
+            <a href="adoption-gap.html" class="dash-card purple">
+                <div class="dash-card-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="12"/>
+                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                </div>
+                <h2>Adoption Gap</h2>
+                <p>Identify users who haven't adopted Highspot. Compare active, never-logged-in, and deactivated accounts by group.</p>
+                <div class="data-file">
+                    <span class="status-dot" id="dotGap"></span>
+                    <code>User List Report.csv</code>
+                </div>
+            </a>
+            <a href="adoption-and-usage.html" class="dash-card teal">
+                <div class="dash-card-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                </div>
+                <h2>Adoption & Usage</h2>
+                <p>Monitor internal user engagement with Highspot content. Track views, downloads, shares, and activity trends.</p>
+                <div class="data-file">
+                    <span class="status-dot" id="dotAdoption"></span>
+                    <code>Activity Log Report.csv</code>
+                </div>
+            </a>
+            <a href="content-impact.html" class="dash-card blue">
+                <div class="dash-card-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                    </svg>
+                </div>
+                <h2>Content Impact</h2>
+                <p>Analyse how shared content influences Salesforce opportunities. Track win rates, deal values, and sales rep performance.</p>
+                <div class="data-file">
+                    <span class="status-dot" id="dotImpact"></span>
+                    <code>Externally Shared Item List.csv</code>
+                </div>
+            </a>
+        </div>
+
+        <div class="faq-header">
+            <div class="section-title" style="margin-bottom:0">Knowledge Base</div>
+            <div class="faq-tag-filters" id="faqTagFilters">
+                <button class="faq-tag-btn data active" onclick="toggleTagFilter('data')">Data</button>
+                <button class="faq-tag-btn method active" onclick="toggleTagFilter('method')">Methodology</button>
+                <button class="faq-tag-btn howto active" onclick="toggleTagFilter('howto')">How-To</button>
+            </div>
+            <div class="faq-search-wrap">
+                <span class="faq-search-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+                <input class="faq-search" type="text" id="faqSearch" placeholder="Search knowledge base..." oninput="filterFAQ()">
+            </div>
+        </div>
+        <div class="faq-grid" id="faqGrid"></div>
+        <div class="faq-show-all" id="faqShowAll">
+            <button onclick="showAllFAQ()">Show all articles</button>
+        </div>
+    </main>
+
+    <div class="footer">Ansell Healthcare &middot; Highspot Analytics Hub</div>
+
+    <script>
+        // ---- Check CSV availability ----
+        const csvFiles = [
+            { file: 'Reports/Externally Shared Item List.csv', dotId: 'dotImpact' },
+            { file: 'Reports/Activity Log Report.csv', dotId: 'dotAdoption' },
+            { file: 'Reports/User List Report.csv', dotId: 'dotGap' }
+        ];
+
+        csvFiles.forEach(({ file, dotId }) => {
+            fetch(file, { method: 'HEAD' }).then(r => {
+                document.getElementById(dotId).classList.add(r.ok ? 'ok' : 'missing');
+            }).catch(() => {
+                document.getElementById(dotId).classList.add('missing');
+            });
+        });
+
+        // ---- FAQ Data ----
+        const FAQ = [
+            {
+                q: 'What CSV files do I need?',
+                a: 'There are 3 CSV files, each exported from Highspot Analytics:<br><br>' +
+                   '<b>Content Impact:</b> <code>Externally Shared Item List.csv</code><br>' +
+                   '<b>Adoption & Usage:</b> <code>Activity Log Report.csv</code><br>' +
+                   '<b>Adoption Gap:</b> <code>User List Report.csv</code><br><br>' +
+                   'Place them in the <code>Reports/</code> folder for auto-loading, or use the "Load Data" button on each dashboard.',
+                tag: 'data', tagLabel: 'Data'
+            },
+            {
+                q: 'How is the Adoption Rate calculated?',
+                a: 'Adoption Rate = Active Users / (Active Users + Never Logged In Users).<br><br>' +
+                   'Deactivated users are excluded from the denominator since they are no longer eligible. ' +
+                   '"Never Logged In" means the account status is "Created" — the user was provisioned but never signed in.',
+                tag: 'method', tagLabel: 'Methodology'
+            },
+            {
+                q: 'What does "Content-Influenced" mean?',
+                a: 'An opportunity is "content-influenced" when at least one piece of Highspot content was externally shared ' +
+                   'and linked to that Salesforce opportunity. This means a sales rep sent content to a prospect while working the deal.<br><br>' +
+                   'The Content Impact dashboard tracks how these influenced deals perform compared to the overall pipeline.',
+                tag: 'method', tagLabel: 'Methodology'
+            },
+            {
+                q: 'How do I export the Externally Shared Item List?',
+                a: 'In Highspot, go to <b>Analytics > Reports > Externally Shared Item List</b>. ' +
+                   'Set your date range and any filters, then click <b>Export</b> to download the CSV. ' +
+                   'Make sure to include all columns — the dashboard needs fields like Opportunity Stage, Amount, and Share dates.',
+                tag: 'howto', tagLabel: 'How-To'
+            },
+            {
+                q: 'How do I export the Activity Log Report?',
+                a: 'In Highspot, go to <b>Analytics > Reports > Activity Log Report</b>. ' +
+                   'Select the desired date range and export as CSV. The report captures all user activity events ' +
+                   'including views, downloads, and shares with timestamps and user/item details.',
+                tag: 'howto', tagLabel: 'How-To'
+            },
+            {
+                q: 'How do I export the User List Report?',
+                a: 'In Highspot, go to <b>Analytics > Reports > User List Report</b>. ' +
+                   'Export as CSV. This report includes all provisioned users regardless of status — Active, Created (never logged in), and Deactivated.',
+                tag: 'howto', tagLabel: 'How-To'
+            },
+            {
+                q: 'What groups are filtered out automatically?',
+                a: 'System groups are excluded from group-based analysis to keep results meaningful. These include: ' +
+                   '<code>Everyone</code>, <code>Analysts</code>, <code>Publishers</code>, <code>Evaluators</code>, ' +
+                   '<code>Administrators</code>, <code>[GLOBAL] SSO Marketing</code>, <code>[GLOBAL] GPMO</code>.<br><br>' +
+                   'Users in these groups are still counted — only the group labels are hidden from filters and charts.',
+                tag: 'data', tagLabel: 'Data'
+            },
+            {
+                q: 'What are our Highspot license limits?',
+                a: 'We have two license types with defined seat limits:<br><br>' +
+                   '<b>Revenue Enablement Platform E1:</b> 396 licenses<br>' +
+                   '<b>Revenue Enablement Platform E2:</b> 9 licenses<br><br>' +
+                   'Current usage is tracked on the <b>Adoption Gap</b> dashboard — the license counter next to the filters shows active seats in use vs the limit.',
+                tag: 'data', tagLabel: 'Data'
+            },
+            {
+                q: 'What does the Win Rate KPI show?',
+                a: 'Win Rate = Won Opportunities / Closed Opportunities (where closed means Won + Lost).<br><br>' +
+                   'Only opportunities that have been marked as Closed in Salesforce are included. Open opportunities are excluded. ' +
+                   'The "Influenced Win Rate" specifically looks at opportunities where Highspot content was shared.',
+                tag: 'method', tagLabel: 'Methodology'
+            },
+            {
+                q: 'How is IMPACT status determined?',
+                a: 'Content is marked as <code>IMPACT</code> when it has <strong>engagement</strong> (Views > 0 OR Downloads > 0 OR View Time > 0) AND the opportunity has <strong>progressed</strong> to a later stage since the content was shared.<br><br>' +
+                   'Stage progression follows: Create → Qualify → Develop → Validate → Negotiate → Closed-Won.',
+                tag: 'method', tagLabel: 'Methodology'
+            },
+            {
+                q: 'How is LOST status determined?',
+                a: 'Content is marked as <code>LOST</code> when it has <strong>engagement</strong> (Views > 0 OR Downloads > 0 OR View Time > 0) AND the opportunity is currently in <strong>Closed-Lost</strong> stage.<br><br>' +
+                   'This helps identify content that was engaged with but didn\'t prevent the deal from being lost.',
+                tag: 'method', tagLabel: 'Methodology'
+            },
+            {
+                q: 'How is STALLED status determined?',
+                a: 'Content is marked as <code>STALLED</code> when it has <strong>engagement</strong> (Views > 0 OR Downloads > 0 OR View Time > 0) but the opportunity has <strong>not progressed</strong> beyond the stage it was in when the content was shared, and is not yet closed.',
+                tag: 'method', tagLabel: 'Methodology'
+            },
+            {
+                q: 'How is Opportunity Age calculated?',
+                a: 'For <strong>open opportunities</strong>: number of days from Opportunity Created Date to today.<br><br>' +
+                   'For <strong>closed opportunities</strong> (Won or Lost): number of days from Opportunity Created Date to Close Date. This reflects the actual deal cycle length rather than an ongoing count.',
+                tag: 'method', tagLabel: 'Methodology'
+            },
+            {
+                q: 'How is View Time measured?',
+                a: 'View Time is the total time spent viewing content externally (External Viewing Time field from Highspot).<br><br>' +
+                   'It is displayed in seconds (s), minutes (m), or hours and minutes (h m) depending on the duration.',
+                tag: 'method', tagLabel: 'Methodology'
+            },
+            {
+                q: 'How does Revenue Attribution work?',
+                a: 'Revenue values are counted <strong>once per opportunity</strong>, not per content item.<br><br>' +
+                   'If multiple content items influenced the same opportunity, the opportunity value is only counted once in totals to avoid inflation.',
+                tag: 'method', tagLabel: 'Methodology'
+            },
+            {
+                q: 'Content Impact: what columns are required?',
+                a: 'The <code>Externally Shared Item List.csv</code> requires these key columns:<br><br>' +
+                   '<b>Content:</b> Item Name, Item - Spot Name, Item - Archived<br>' +
+                   '<b>Sharing:</b> External Share - Owner Name, External Share - Created At (UTC), External Views, External Viewing Time, External Downloads<br>' +
+                   '<b>Opportunity:</b> Opportunity - Name, Opportunity - Stage, Opportunity - Closed, Opportunity - Won, Opportunity - Amount, Opportunity - Currency, Opportunity - Close Date<br>' +
+                   '<b>Groups:</b> Item - Added By - Groups Name (semicolon-separated)',
+                tag: 'data', tagLabel: 'Data'
+            },
+            {
+                q: 'Adoption & Usage: what columns are required?',
+                a: 'The <code>Activity Log Report.csv</code> requires these columns:<br><br>' +
+                   '<b>Event:</b> Event Id, Event, Verb, Duration, Date (UTC)<br>' +
+                   '<b>User:</b> User Name, User Id, User - Groups Name<br>' +
+                   '<b>Content:</b> Item Name, Item - Spot Name, Item - Spot - Official',
+                tag: 'data', tagLabel: 'Data'
+            },
+            {
+                q: 'Adoption Gap: what columns are required?',
+                a: 'The <code>User List Report.csv</code> requires these columns:<br><br>' +
+                   '<b>User:</b> User Name, Email, Status, Kind<br>' +
+                   '<b>Dates:</b> Created At (UTC), Deactivated At (UTC), Last Login<br>' +
+                   '<b>Activity:</b> Total Time, Items Created, Externally Shared Items<br>' +
+                   '<b>Groups:</b> Groups Name (semicolon-separated), License - Name',
+                tag: 'data', tagLabel: 'Data'
+            },
+            {
+                q: 'Can I load data manually?',
+                a: 'Yes. Each dashboard has a <b>"Load Data"</b> button in the top-right corner. ' +
+                   'Click it to select a CSV file from your computer. The data is processed entirely in your browser — nothing is uploaded to a server.<br><br>' +
+                   'For auto-loading, place the CSV files in the <code>Reports/</code> folder.',
+                tag: 'howto', tagLabel: 'How-To'
+            },
+            {
+                q: 'How are multi-select filters used?',
+                a: 'Click any filter dropdown to open it. You can search within the dropdown, select multiple items, ' +
+                   'or use "Select All" / "Clear" buttons. The dashboard updates in real-time as you change selections.<br><br>' +
+                   'When no items are selected, all values are included (equivalent to "All").',
+                tag: 'howto', tagLabel: 'How-To'
+            },
+            {
+                q: 'What does "Login Recency" show?',
+                a: 'Login Recency groups users by how recently they last signed in: Last 7 days, 8-30 days, 31-60 days, 61-90 days, 90+ days, or Never.<br><br>' +
+                   'This helps identify users who may be disengaging — someone who last logged in 90+ days ago may need re-engagement.',
+                tag: 'method', tagLabel: 'Methodology'
+            },
+            {
+                q: 'Why do some users appear in multiple groups?',
+                a: 'Highspot assigns users to multiple groups (e.g. a regional team and a functional team). ' +
+                   'The Groups Name field is semicolon-separated, so one user can appear in several group-based charts.<br><br>' +
+                   'This is by design — it reflects the user\'s actual group memberships for accurate per-group analysis.',
+                tag: 'data', tagLabel: 'Data'
+            },
+            {
+                q: 'Is this Dashboard using Marketo\'s First Touch? or Multi-Touch attribution model?',
+                a: 'Highspot uses a custom model and at this moment we cannot see all Highspot interactions within Marketo which oversees the FT and the MT models. You won\'t be able to find these details within our Omnichannel Dashboard.',
+                tag: 'method', tagLabel: 'Methodology'
+            }
+        ];
+
+        let showAll = false;
+        let expandedIdx = null;
+        let activeTag = null;          // null = all tags shown
+        let initialCards = null;       // stable random selection
+
+        function getFilteredFAQ() {
+            const query = document.getElementById('faqSearch').value.toLowerCase().trim();
+            let items = FAQ;
+
+            if (activeTag) {
+                items = items.filter(item => item.tag === activeTag);
+            }
+
+            if (query) {
+                items = items.filter(item =>
+                    item.q.toLowerCase().includes(query) ||
+                    item.a.toLowerCase().includes(query) ||
+                    item.tagLabel.toLowerCase().includes(query)
+                );
+            }
+
+            return items;
+        }
+
+        function renderFAQ() {
+            const grid = document.getElementById('faqGrid');
+            const showAllBtn = document.getElementById('faqShowAll');
+            const query = document.getElementById('faqSearch').value.trim();
+            const isFiltering = query.length > 0 || activeTag !== null;
+
+            let display = getFilteredFAQ();
+
+            if (!isFiltering && !showAll) {
+                if (!initialCards) {
+                    initialCards = getRandomCards(display, 3);
+                }
+                display = initialCards;
+            }
+
+            if (display.length === 0) {
+                grid.innerHTML = '<div class="faq-no-results">No matching articles found.</div>';
+                showAllBtn.style.display = 'none';
+                return;
+            }
+
+            grid.innerHTML = display.map(item => {
+                const realIdx = FAQ.indexOf(item);
+                const isExpanded = expandedIdx === realIdx;
+                return '<div class="faq-card' + (isExpanded ? ' expanded' : '') + '" data-idx="' + realIdx + '" onclick="toggleFAQ(' + realIdx + ')">' +
+                    '<div class="faq-q"><span class="faq-icon">?</span><span>' + item.q + '</span></div>' +
+                    '<div class="faq-a">' + item.a + '</div>' +
+                    '<span class="faq-tag ' + item.tag + '" onclick="event.stopPropagation(); filterByTag(\'' + item.tag + '\')">' + item.tagLabel + '</span>' +
+                '</div>';
+            }).join('');
+
+            const totalMatching = getFilteredFAQ().length;
+            showAllBtn.style.display = (!isFiltering && !showAll && totalMatching > 3) ? 'block' : 'none';
+        }
+
+        function getRandomCards(items, count) {
+            if (items.length <= count) return [...items];
+            const shuffled = [...items];
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+            return shuffled.slice(0, count);
+        }
+
+        function filterFAQ() {
+            expandedIdx = null;
+            renderFAQ();
+        }
+
+        function toggleFAQ(idx) {
+            const isCurrentlyExpanded = expandedIdx === idx;
+            document.querySelectorAll('.faq-card.expanded').forEach(c => c.classList.remove('expanded'));
+            expandedIdx = isCurrentlyExpanded ? null : idx;
+            if (expandedIdx !== null) {
+                const target = document.querySelector('.faq-card[data-idx="' + expandedIdx + '"]');
+                if (target) target.classList.add('expanded');
+            }
+        }
+
+        function showAllFAQ() {
+            showAll = true;
+            expandedIdx = null;
+            renderFAQ();
+        }
+
+        function filterByTag(tag) {
+            if (activeTag === tag) {
+                activeTag = null;
+            } else {
+                activeTag = tag;
+            }
+            showAll = false;
+            expandedIdx = null;
+            updateTagButtons();
+            renderFAQ();
+        }
+
+        function toggleTagFilter(tag) {
+            filterByTag(tag);
+        }
+
+        function updateTagButtons() {
+            document.querySelectorAll('.faq-tag-btn').forEach(btn => {
+                const btnTag = [...btn.classList].find(c => ['data', 'method', 'howto'].includes(c));
+                if (activeTag === null) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.toggle('active', btnTag === activeTag);
+                }
+            });
+        }
+
+        // Initial render
+        renderFAQ();
+    </script>
+</body>
+</html>

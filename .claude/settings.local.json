@@ -11,7 +11,15 @@
       "WebFetch(domain:brandfetch.com)",
       "WebFetch(domain:apidoc.on24.com)",
       "WebFetch(domain:developers.cvent.com)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(npx next:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(cmd.exe:*)",
+      "Bash(npm install:*)",
+      "Bash(curl:*)",
+      "Bash(powershell:*)",
+      "Read(//c/Windows/System32/**)"
     ]
   }
 }
