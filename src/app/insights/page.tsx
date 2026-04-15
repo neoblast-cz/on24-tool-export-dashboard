@@ -1007,9 +1007,13 @@ export default function InsightsPage() {
 
   // When the date filter is applied while the user is on this tab (Dashboard isn't mounted
   // to do the re-fetch), Insights re-fetches events itself and resets all derived data.
+  // Also handles the case where Insights is the landing page and liveWebinars is empty.
   useEffect(() => {
-    // Skip the initial mount — Dashboard already loaded events for the current filter.
-    if (!insightsMountedRef.current) { insightsMountedRef.current = true; return; }
+    if (!insightsMountedRef.current) {
+      insightsMountedRef.current = true;
+      // If Dashboard already populated liveWebinars, skip the fetch on initial mount.
+      if (liveWebinars.length > 0) return;
+    }
 
     // Reset all derived state so effects above re-run for the new events.
     setLiveWebinars([]);
