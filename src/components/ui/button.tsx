@@ -8,10 +8,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantStyles = {
-  primary: 'bg-ansell-teal text-white hover:bg-ansell-teal-dark focus:ring-ansell-teal',
+  primary: 'bg-ansell-blue text-white hover:bg-[#00508a] focus:ring-ansell-blue',
   secondary: 'bg-ansell-dark text-white hover:bg-ansell-dark-darker focus:ring-ansell-dark',
-  outline: 'border border-ansell-gray-300 text-ansell-gray-700 hover:bg-ansell-gray-50 focus:ring-ansell-teal',
-  ghost: 'text-ansell-gray-600 hover:bg-ansell-gray-100 hover:text-ansell-gray-900 focus:ring-ansell-teal',
+  outline: 'border border-ansell-blue text-ansell-blue hover:bg-ansell-blue hover:text-white focus:ring-ansell-blue',
+  ghost: 'text-ansell-gray hover:bg-gray-100 hover:text-ansell-dark focus:ring-ansell-teal',
   danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
 };
 

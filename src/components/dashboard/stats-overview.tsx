@@ -62,9 +62,9 @@ function StatCard({
   accent?: 'blue' | 'teal' | 'gray' | 'purple' | 'none';
 }) {
   return (
-    <Card className="px-4 py-3 flex flex-col" accent={accent}>
-      <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-ansell-gray truncate">{label}</p>
-      <p className="mt-1 text-[22px] font-bold leading-none text-ansell-dark">{value}</p>
+    <Card className="px-4 py-3 flex flex-col" accent={accent} hover>
+      <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-ansell-gray truncate">{label}</p>
+      <p className="mt-1 text-[30px] font-bold leading-none text-ansell-dark">{value}</p>
       {sub && <p className="text-[11px] text-ansell-gray mt-0.5">{sub}</p>}
       {sparkData && <Sparkline data={sparkData} color={sparkColor} />}
     </Card>

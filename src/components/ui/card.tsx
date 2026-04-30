@@ -11,20 +11,26 @@ const ACCENT_STYLES: Record<string, CSSProperties> = {
   none:  {},
 };
 
-const CARD_SHADOW: CSSProperties = { boxShadow: '0 1px 4px rgba(0,0,0,0.08)' };
+const CARD_SHADOW: CSSProperties = { boxShadow: '0 1px 4px rgba(0,0,0,0.07)' };
+const CARD_SHADOW_HOVER: CSSProperties = { boxShadow: '0 4px 16px rgba(0,0,0,0.12)' };
 
 interface CardProps {
   children: ReactNode;
   className?: string;
   accent?: 'blue' | 'teal' | 'gray' | 'purple' | 'amber' | 'violet' | 'none';
   style?: CSSProperties;
+  hover?: boolean;
+  id?: string;
 }
 
-export function Card({ children, className = '', accent = 'none', style }: CardProps) {
+export function Card({ children, className = '', accent = 'none', style, hover = false, id }: CardProps) {
   return (
     <div
-      className={`bg-white ${className}`}
-      style={{ ...CARD_SHADOW, ...ACCENT_STYLES[accent], ...style }}
+      id={id}
+      className={`bg-white rounded-none ${hover ? 'card-hover' : ''} ${className}`}
+      style={{ ...CARD_SHADOW, ...ACCENT_STYLES[accent], ...style, scrollMarginTop: 16 }}
+      onMouseEnter={hover ? e => { Object.assign((e.currentTarget as HTMLElement).style, CARD_SHADOW_HOVER); (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; } : undefined}
+      onMouseLeave={hover ? e => { Object.assign((e.currentTarget as HTMLElement).style, CARD_SHADOW); (e.currentTarget as HTMLElement).style.transform = ''; } : undefined}
     >
       {children}
     </div>

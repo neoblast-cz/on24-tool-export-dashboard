@@ -43,9 +43,9 @@ body {
   background: #a1a1a1;
 }
 
-/* Base 8px border radius on all elements */
+/* Base 4px border radius — matches ansell.digital.css compact scale */
 * {
-  border-radius: 8px !important;
+  border-radius: 4px !important;
 }
 
 /* Exceptions */
@@ -60,6 +60,21 @@ body {
 /* Structural elements that should have no radius */
 html, body, table, thead, tbody, tfoot, tr, col, colgroup {
   border-radius: 0 !important;
+}
+
+/* Card hover lift — mirrors ansell.digital.css dash-card hover */
+.card-hover {
+  transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+/* Chart card header row pattern */
+.chart-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
 /* Ansell section label — mirrors CardTitle */

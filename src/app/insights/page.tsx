@@ -210,12 +210,12 @@ function InsightCallout({ label, value, sub, accent, tip, benchmark }: {
   const bmAbove = bm ? bm.ours >= bm.reference : false;
   const bmPct   = bm ? Math.round(Math.abs(bm.ours / bm.reference - 1) * 100) : 0;
   return (
-    <Card accent={accent} className="px-4 py-3">
+    <Card accent={accent} className="px-4 py-3" hover>
       <div className="flex items-start justify-between gap-1 mb-1">
         <p className="text-[10px] font-bold uppercase tracking-[0.07em] text-ansell-gray leading-tight">{label}</p>
         {tip && <InfoTip text={tip} />}
       </div>
-      <p className="text-[22px] font-bold leading-tight" style={{ color: colors[accent] }}>{value}</p>
+      <p className="text-[30px] font-bold leading-tight" style={{ color: colors[accent] }}>{value}</p>
       {sub && <p className="text-[11px] text-gray-500 mt-0.5 leading-tight">{sub}</p>}
       {bm && (
         <div className="flex items-center gap-1 mt-1.5 pt-1.5 border-t border-gray-100">
@@ -493,14 +493,13 @@ function ExpandableSourceBar({ source, maxReg, expanded, onToggle }: {
   );
 }
 
-function RegistrationSources({ sources, status, totalReg, totalAtt, sourceField, breakdowns, funnelSlot }: {
+function RegistrationSources({ sources, status, totalReg, totalAtt, sourceField, breakdowns }: {
   sources: RegSource[];
   status: 'idle' | 'loading' | 'done' | 'error';
   totalReg: number;
   totalAtt: number;
   sourceField: SourceField;
   breakdowns: Partial<Record<SourceField, BreakdownEntry>>;
-  funnelSlot?: React.ReactNode;
 }) {
   const { tracked, directReg, directAtt } = useMemo(() => mergeSources(sources), [sources]);
 
@@ -682,9 +681,8 @@ function RegistrationSources({ sources, status, totalReg, totalAtt, sourceField,
               </div>
             </div>
 
-            {/* Right — email funnel + best/worst att rate */}
+            {/* Right — best/worst att rate */}
             <div>
-              {funnelSlot}
               <p className="text-[9px] font-semibold uppercase tracking-wider text-emerald-600 mb-1.5">Best Attendance Rate (min 5 reg)</p>
               {byRate.slice(0, 5).map((s, i) => (
                 <div key={s.code} className="flex items-center gap-2 py-1 border-b border-gray-100 last:border-0">
@@ -735,7 +733,25 @@ export default function InsightsPage() {
   const sourcesRef = useRef(false);
 
   const [showEventIds, setShowEventIds] = useState(false);
-  const [activeSection, setActiveSection] = useState<'setup' | 'registration' | 'attendance' | 'engagement' | 'revenue' | null>(null);
+  const [activeSection, setActiveSection] = useState<'setup' | 'registration' | 'attendance' | 'engagement' | 'revenue' | null>('setup');
+  const [navQuery, setNavQuery] = useState('');
+
+  // Scroll-spy: highlight sidenav item based on which section is in view
+  useEffect(() => {
+    const ids = ['setup', 'registration', 'attendance', 'engagement', 'revenue'] as const;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setActiveSection(entry.target.id.replace('sec-', '') as typeof ids[number]);
+          }
+        }
+      },
+      { rootMargin: '-15% 0px -60% 0px', threshold: 0 },
+    );
+    ids.forEach(id => { const el = document.getElementById(`sec-${id}`); if (el) obs.observe(el); });
+    return () => obs.disconnect();
+  }, []);
 
   // Revenue attribution
   const [revenueData, setRevenueData] = useState<RevenueData | null>(null);
@@ -1377,28 +1393,95 @@ export default function InsightsPage() {
   }
 
   return (
-    <div id="insights-export-root" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div id="insights-export-root" className={isExporting ? 'max-w-5xl mx-auto px-4 py-6 space-y-6' : 'flex items-start'}>
 
-      {/* Title + metrics loading status */}
+    {/* ── Sidenav ─────────────────────────────────────────────────────────────── */}
+    {!isExporting && (() => {
+      const NAV: { key: string; label: string; color: string; items: { label: string; id: string }[] }[] = [
+        { key: 'cross', label: 'Cross-Findings', color: '#75787B', items: [
+          { label: 'Cross-Findings', id: 'sub-cross-findings' },
+        ]},
+        { key: 'setup', label: 'Setup', color: '#0891b2', items: [
+          { label: 'Marketo Programs', id: 'sub-setup-marketo' },
+        ]},
+        { key: 'registration' as const, label: 'Registration', color: '#0063AC', items: [
+          { label: 'Email Invite Funnel', id: 'sub-reg-funnel' },
+          { label: 'Registration Sources', id: 'sub-reg-sources' },
+        ]},
+        { key: 'attendance' as const, label: 'Attendance', color: '#00A28F', items: [
+          { label: 'Key Metrics', id: 'sub-att-metrics' },
+          { label: 'Best Attendance Rate', id: 'sub-att-best' },
+          { label: 'Day of Week', id: 'sub-att-dow' },
+          { label: 'Language Breakdown', id: 'sub-att-lang' },
+        ]},
+        { key: 'engagement' as const, label: 'Engagement', color: '#7030A0', items: [
+          { label: 'Key Metrics (IPA)', id: 'sub-eng-metrics' },
+          { label: 'Performance Distribution', id: 'sub-eng-dist' },
+          { label: 'By Resource', id: 'sub-eng-resource' },
+          { label: 'By Tag', id: 'sub-eng-tag' },
+          { label: 'By Source', id: 'sub-eng-source' },
+          { label: 'Tag Performance', id: 'sub-eng-tagperf' },
+        ]},
+        { key: 'revenue' as const, label: 'Revenue', color: '#059669', items: [
+          { label: 'Tags by Revenue', id: 'sub-rev-tags' },
+          { label: 'Programs', id: 'sub-rev-programs' },
+        ]},
+      ];
+      const q = navQuery.toLowerCase();
+      const filtered = NAV.map(sec => ({
+        ...sec,
+        items: q ? sec.items.filter(it => it.label.toLowerCase().includes(q)) : sec.items,
+        matchesGroup: sec.label.toLowerCase().includes(q),
+      })).filter(sec => !q || sec.matchesGroup || sec.items.length > 0);
+      const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return (
+        <nav className="bg-white border-r border-gray-200 shrink-0" style={{ width: 200, position: 'sticky', top: 0, height: '100vh', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          {/* Search */}
+          <div className="px-3 pt-3 pb-2 border-b border-gray-100">
+            <input
+              type="search"
+              value={navQuery}
+              onChange={e => setNavQuery(e.target.value)}
+              placeholder="Search…"
+              className="w-full px-2.5 py-1.5 text-[11px] border border-gray-200 focus:outline-none focus:border-ansell-teal placeholder-gray-300 bg-gray-50"
+            />
+          </div>
+          {/* Nav groups */}
+          <div className="py-2 flex-1 overflow-y-auto">
+            {filtered.map(({ key, label, color, items, matchesGroup }) => {
+              const active = activeSection === key;
+              return (
+                <div key={key} className="mb-1">
+                  <button
+                    onClick={() => scrollTo(`sec-${key}`)}
+                    className="w-full text-left py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] transition-all"
+                    style={{ paddingLeft: 12, borderLeft: `3px solid ${active ? color : 'transparent'}`, color: active ? color : '#b0b7c3' }}
+                  >
+                    {label}
+                  </button>
+                  {(matchesGroup || items.length > 0) && items.map(it => (
+                    <button
+                      key={it.id}
+                      onClick={() => scrollTo(it.id)}
+                      className="w-full text-left text-[11px] text-gray-400 hover:text-ansell-blue transition-colors block"
+                      style={{ paddingLeft: 22, paddingTop: 4, paddingBottom: 4 }}
+                    >
+                      {it.label}
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </nav>
+      );
+    })()}
+
+    {/* ── Main content ────────────────────────────────────────────────────────── */}
+    <div className={isExporting ? '' : 'flex-1 min-w-0 px-6 py-6 space-y-6'}>
+
+      {/* Metrics loading status + export */}
       <div className="flex items-baseline justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-[20px] font-extrabold uppercase tracking-wide text-ansell-dark">
-            Key <span className="text-ansell-blue">Insights</span>
-          </h1>
-          <p className="text-[11px] text-ansell-gray mt-0.5">
-            {(() => {
-              if (selectedTags.size > 0) {
-                return `${filteredWebinars.length} of ${webinars.length} events analysed (filtered by tag)`;
-              }
-              const base = `${webinars.length} events analysed`;
-              if (excluded.total === 0) return base;
-              const parts: string[] = [];
-              if (excluded.tests > 0) parts.push(`${excluded.tests} test${excluded.tests !== 1 ? 's' : ''}`);
-              for (const [type, count] of excluded.otherTypes) parts.push(`${count} ${type}`);
-              return `${base} · ${excluded.total} excluded (${parts.join(', ')})`;
-            })()}
-          </p>
-        </div>
         {metricsStillLoading && (
           <span className="text-[10px] text-ansell-teal flex items-center gap-1.5">
             <span className="inline-block h-2.5 w-2.5 border-2 border-ansell-teal border-t-transparent rounded-full animate-spin" />
@@ -1483,7 +1566,7 @@ export default function InsightsPage() {
 
       {/* Event IDs toggle */}
       {webinars.length > 0 && (
-        <div>
+        <div id="sub-setup-events" style={{ scrollMarginTop: 16 }}>
           <button
             onClick={() => setShowEventIds(v => !v)}
             className="flex items-center gap-1.5 text-[10px] text-gray-400 hover:text-gray-600 transition-colors select-none"
@@ -1536,7 +1619,7 @@ export default function InsightsPage() {
 
       {/* ── Cross-Findings ──────────────────────────────────────────────────── */}
       {crossFindings.length > 0 && (
-        <Card className="px-4 py-4" accent="gray">
+        <Card id="sub-cross-findings" className="px-4 py-4">
           <SectionLabel tip="Statistical comparisons computed across all events. Only shown when the difference is ≥3 percentage points (for rates) or ≥0.3 engagement points (out of 10) — to filter noise from small samples.">
             Cross-Findings
           </SectionLabel>
@@ -1548,122 +1631,32 @@ export default function InsightsPage() {
         </Card>
       )}
 
-      {/* ════════════════════════ SECTION NAVIGATOR ════════════════════════════ */}
-      {!isExporting && (() => {
-        const ipaTeaser = totals.att > 0
-          ? ((totals.qa + totals.polls + totals.surveys + totals.dl + totals.reactions) / totals.att).toFixed(2)
-          : '—';
-        const revTotals = revenueData?.totals;
-        const fmtRevTeaser = (n: number) =>
-          n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M`
-          : n >= 1_000   ? `$${(n / 1_000).toFixed(0)}K`
-          : n > 0        ? `$${Math.round(n)}`
-          : '—';
-        const revMatchedMtWon = (() => {
-          if (!revenueData) return 0;
-          const codes = new Set<string>();
-          for (const w of filteredWebinars) {
-            if (w.campaignName) {
-              codes.add(w.campaignName);
-              codes.add(w.campaignName.replace(/\*[^*]*$/, ''));
-            }
-          }
-          return revenueData.programs
-            .filter(p => codes.has(p.programName) || codes.has(p.programName.replace(/\*[^*]*$/, '')))
-            .reduce((s, p) => s + p.mtWon, 0);
-        })();
-        const SECS = [
-          {
-            key: 'setup' as const,
-            label: 'Setup',
-            color: '#0891b2',
-            bigStat: fmtNum(filteredWebinars.length),
-            bigStatLabel: 'events analysed',
-            smallStat: marketoStatus === 'done' && marketoData ? `${mktMatchedPrograms.length} matched · ${marketoData.fileDate}` : (marketoStatus === 'error' ? 'no marketo file' : 'upload Marketo report'),
-          },
-          {
-            key: 'registration' as const,
-            label: 'Registration',
-            color: '#0063AC',
-            bigStat: sourcesStatus === 'done' ? fmtNum(sourcesRegTotal) : '—',
-            bigStatLabel: 'total registrants',
-            smallStat: sourcesStatus === 'done' ? `${qualifiedSources.length} sources tracked` : '…',
-          },
-          {
-            key: 'attendance' as const,
-            label: 'Attendance',
-            color: '#00A28F',
-            bigStat: fmtPct(totals.attRate),
-            bigStatLabel: 'avg attendance rate',
-            smallStat: `${fmtNum(totals.att)} of ${fmtNum(totals.reg)} registered`,
-          },
-          {
-            key: 'engagement' as const,
-            label: 'Engagement',
-            color: '#7030A0',
-            bigStat: ipaTeaser,
-            bigStatLabel: 'interactions / attendee',
-            smallStat: `${metricsLoadedCount} of ${webinars.length} events with metrics`,
-          },
-          {
-            key: 'revenue' as const,
-            label: 'Revenue',
-            color: '#059669',
-            bigStat: revTotals ? fmtRevTeaser(revMatchedMtWon) : (revenueStatus === 'loading' ? '…' : '—'),
-            bigStatLabel: 'MT won revenue',
-            smallStat: revTotals ? `${revenueData!.programs.length} programs · ${revenueData!.fileDate}` : (revenueStatus === 'error' ? 'no file found' : 'loading…'),
-          },
-        ];
-        const isActive = activeSection !== null;
-        if (!isActive) {
-          return (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-              {SECS.map(s => (
-                <button key={s.key} onClick={() => setActiveSection(s.key)}
-                  className="text-left p-8 border-2 border-gray-200 bg-white hover:shadow-md hover:border-gray-300 transition-all group">
-                  <p className="text-[34px] font-extrabold leading-none mb-2" style={{ color: s.color }}>{s.bigStat}</p>
-                  <p className="text-[9px] uppercase tracking-widest text-gray-400 mb-4">{s.bigStatLabel}</p>
-                  <div className="flex items-center justify-between">
-                    <p className="text-[13px] font-extrabold uppercase tracking-wide text-gray-700">{s.label}</p>
-                    <svg className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                </button>
-              ))}
-            </div>
-          );
-        }
-        return (
-          <div className="grid grid-cols-5 gap-2">
-            {SECS.map(s => {
-              const selected = activeSection === s.key;
-              return (
-                <button key={s.key}
-                  onClick={() => setActiveSection(selected ? null : s.key)}
-                  className="py-2.5 px-3 border-2 text-left transition-all"
-                  style={selected
-                    ? { borderColor: s.color, backgroundColor: `${s.color}0D`, color: s.color }
-                    : { borderColor: '#E2E8F0', color: '#6B7280', backgroundColor: 'white' }}>
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-[11px] font-bold uppercase tracking-wide">{s.label}</span>
-                    {selected && <span className="text-[8px] opacity-50 shrink-0">▲ close</span>}
-                  </div>
-                  <p className="text-[10px] opacity-60 mt-0.5 truncate">{s.smallStat}</p>
-                </button>
-              );
-            })}
-          </div>
-        );
-      })()}
-
       {/* ════════════════════════════ SETUP ══════════════════════════════ */}
-      {(activeSection === 'setup' || isExporting) && (
-      <div className="space-y-6">
+      <div id="sec-setup" className="space-y-6" style={{ scrollMarginTop: 16 }}>
       {isExporting && <div className="pt-6 pb-3 flex items-center gap-3"><div className="w-1 h-7 shrink-0" style={{background:'#0891b2'}} /><p className="text-[18px] font-extrabold uppercase tracking-[0.18em] text-ansell-dark">Setup</p></div>}
 
+      {/* ── Section narrative ─────────────────────────────────────────────────── */}
+      {!isExporting && (
+        <div className="flex gap-16 items-start py-10 mb-6 border-b border-gray-100">
+          <div style={{ flex: '0 1 50%', minWidth: 0 }}>
+            <p className="text-[10px] font-bold uppercase tracking-[0.11em] text-ansell-dark mb-2">Webinar Setup</p>
+            <p className="text-[28px] font-bold text-ansell-teal leading-tight uppercase mb-4">Your programs at a glance.</p>
+            <p className="text-[13px] leading-relaxed text-gray-500">
+              Cross-reference ON24 events with Marketo programs using <strong className="text-gray-700">campaign codes</strong>. Each ON24 event with a campaign code should match a Marketo program by name — missing matches mean registrants won&apos;t flow into your CRM or attribution reports. Check setup flags for common issues like <strong className="text-gray-700">missing period costs</strong> or mismatched status steps.
+            </p>
+          </div>
+          <div className="flex-1 flex flex-wrap gap-4 items-start pt-8">
+            <p className="text-[9px] font-bold uppercase tracking-[0.07em] text-gray-400 mb-2 w-full">KPIs to pay attention to</p>
+            <InsightCallout label="Events Analysed" value={String(filteredWebinars.length)} accent="blue" sub="in current date range" />
+            {marketoStatus === 'done' && marketoData && (
+              <InsightCallout label="Matched Programs" value={String(mktMatchedPrograms.length)} accent="teal" sub={`of ${marketoData.programs.length} in report`} />
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Marketo Program Membership */}
-      <Card className="px-4 py-4" accent="blue">
+      <Card id="sub-setup-marketo" className="px-4 py-4">
         <div className="mb-4">
           <SectionLabel tip="Marketo Program Membership report. Members = all invitees (conversion denominator). New Names = net-new leads identified. Success = attended, watched on-demand, or asked to be contacted.">
             Marketo Program Membership
@@ -1837,15 +1830,87 @@ export default function InsightsPage() {
       </Card>
 
       </div>
-      )}
 
       {/* ════════════════════════════ REGISTRATION ══════════════════════════════ */}
-      {(activeSection === 'registration' || isExporting) && (
-      <div className="space-y-6">
+      <div id="sec-registration" className="space-y-6" style={{ scrollMarginTop: 16 }}>
       {isExporting && <div className="pt-6 pb-3 flex items-center gap-3"><div className="w-1 h-7 bg-ansell-blue shrink-0" /><p className="text-[18px] font-extrabold uppercase tracking-[0.18em] text-ansell-dark">Registration</p></div>}
 
+      {/* ── Section narrative ─────────────────────────────────────────────────── */}
+      {!isExporting && (
+        <div className="flex gap-16 items-start py-10 mb-6 border-b border-gray-100">
+          <div style={{ flex: '0 1 50%', minWidth: 0 }}>
+            <p className="text-[10px] font-bold uppercase tracking-[0.11em] text-ansell-dark mb-2">Registration</p>
+            <p className="text-[28px] font-bold text-ansell-teal leading-tight uppercase mb-4">Where are registrants coming from?</p>
+            <p className="text-[13px] leading-relaxed text-gray-500">
+              Registration sources reveal which channels are driving awareness and intent. <strong className="text-gray-700">LinkedIn and Email</strong> typically dominate for B2B webinars — a healthy mix of 3–5 sources reduces channel dependency. Watch for sources with <strong className="text-gray-700">high registration but low attendance rate</strong>; they may be attracting low-intent audiences who won&apos;t show up on the day.
+            </p>
+          </div>
+          <div className="flex-1 flex flex-wrap gap-4 items-start pt-8">
+            <p className="text-[9px] font-bold uppercase tracking-[0.07em] text-gray-400 mb-2 w-full">KPIs to pay attention to</p>
+            {sourcesStatus === 'done' && (
+              <InsightCallout
+                label="Total Registrants"
+                value={sourcesRegTotal >= 1000 ? `${(sourcesRegTotal / 1000).toFixed(1)}k` : String(sourcesRegTotal)}
+                accent="blue"
+                sub={`${qualifiedSources.length} sources tracked`}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Email Invite Funnel */}
+      {marketoStatus === 'done' && sourcesStatus === 'done' && mktMatchedPrograms.length > 0 && (() => {
+        const mktInvited = mktMatchedPrograms.reduce((s, p) => s + p.members, 0);
+        const { tracked } = mergeSources(sources);
+        const mktSrc = tracked.find(s => s.code === 'marketo');
+        const mktReg = mktSrc?.registrants ?? 0;
+        const mktAtt = mktSrc?.attendees ?? 0;
+        const regRate = mktInvited > 0 ? mktReg / mktInvited : 0;
+        const attRate = mktReg > 0 ? mktAtt / mktReg : 0;
+        return (
+          <Card id="sub-reg-funnel" className="px-4 py-4">
+            <SectionLabel tip="Email invite funnel: Marketo Members (invited) → email-sourced registrants → email-sourced attendees. Social, direct and other channels excluded for an apples-to-apples comparison.">
+              Email Invite Funnel
+            </SectionLabel>
+            {marketoData?.fileDate && (
+              <p className="text-[9px] text-gray-400 mb-3">Source: {marketoData.fileDate}</p>
+            )}
+            <div className="flex items-stretch">
+              <div className="flex-1 text-center px-3 py-2.5 bg-gray-50 border border-gray-100">
+                <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Invited</p>
+                <p className="text-[20px] font-bold leading-none text-ansell-blue">{fmtNum(mktInvited)}</p>
+                <p className="text-[9px] text-gray-400 mt-0.5">Marketo members</p>
+              </div>
+              <div className="flex flex-col items-center justify-center px-2 shrink-0">
+                <span className="text-[10px] font-semibold text-gray-600">{fmtPct(regRate)}</span>
+                <svg className="w-4 h-4 text-gray-300 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+              <div className="flex-1 text-center px-3 py-2.5 bg-gray-50 border border-gray-100">
+                <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Registered</p>
+                <p className="text-[20px] font-bold leading-none text-ansell-teal">{fmtNum(mktReg)}</p>
+                <p className="text-[9px] text-gray-400 mt-0.5">via email / Marketo</p>
+              </div>
+              <div className="flex flex-col items-center justify-center px-2 shrink-0">
+                <span className="text-[10px] font-semibold text-gray-600">{fmtPct(attRate)}</span>
+                <svg className="w-4 h-4 text-gray-300 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+              <div className="flex-1 text-center px-3 py-2.5 bg-gray-50 border border-gray-100">
+                <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Attended</p>
+                <p className="text-[20px] font-bold leading-none text-gray-600">{fmtNum(mktAtt)}</p>
+                <p className="text-[9px] text-gray-400 mt-0.5">email-sourced</p>
+              </div>
+            </div>
+          </Card>
+        );
+      })()}
+
       {/* Registration Sources */}
-      <Card className="px-4 py-4" accent="blue">
+      <Card id="sub-reg-sources" className="px-4 py-4">
         {sourcesStatus === 'done' && !isExporting && (
           <div className="flex flex-wrap gap-1.5 mb-4">
             {SOURCE_FIELDS.map(field => {
@@ -1884,67 +1949,40 @@ export default function InsightsPage() {
           totalAtt={sourcesAttTotal}
           sourceField={sourceField}
           breakdowns={breakdowns}
-          funnelSlot={marketoStatus === 'done' && sourcesStatus === 'done' && mktMatchedPrograms.length > 0 ? (() => {
-            const mktInvited = mktMatchedPrograms.reduce((s, p) => s + p.members, 0);
-            const { tracked } = mergeSources(sources);
-            const mktSrc = tracked.find(s => s.code === 'marketo');
-            const mktReg = mktSrc?.registrants ?? 0;
-            const mktAtt = mktSrc?.attendees ?? 0;
-            const regRate = mktInvited > 0 ? mktReg / mktInvited : 0;
-            const attRate = mktReg > 0 ? mktAtt / mktReg : 0;
-            return (
-              <div className="mb-4 pb-4 border-b border-gray-100">
-                <SectionLabel tip="Email invite funnel: Marketo Members (invited) → email-sourced registrants → email-sourced attendees. Social, direct and other channels excluded for an apples-to-apples comparison.">
-                  Email Invite Funnel
-                </SectionLabel>
-                {marketoData?.fileDate && (
-                  <p className="text-[9px] text-gray-400 mb-2">Source: {marketoData.fileDate}</p>
-                )}
-                <div className="flex items-stretch">
-                  <div className="flex-1 text-center px-3 py-2.5 bg-gray-50 border border-gray-100">
-                    <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Invited</p>
-                    <p className="text-[20px] font-bold leading-none text-ansell-blue">{fmtNum(mktInvited)}</p>
-                    <p className="text-[9px] text-gray-400 mt-0.5">Marketo members</p>
-                  </div>
-                  <div className="flex flex-col items-center justify-center px-2 shrink-0">
-                    <span className="text-[10px] font-semibold text-gray-600">{fmtPct(regRate)}</span>
-                    <svg className="w-4 h-4 text-gray-300 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                  <div className="flex-1 text-center px-3 py-2.5 bg-gray-50 border border-gray-100">
-                    <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Registered</p>
-                    <p className="text-[20px] font-bold leading-none text-ansell-teal">{fmtNum(mktReg)}</p>
-                    <p className="text-[9px] text-gray-400 mt-0.5">via email / Marketo</p>
-                  </div>
-                  <div className="flex flex-col items-center justify-center px-2 shrink-0">
-                    <span className="text-[10px] font-semibold text-gray-600">{fmtPct(attRate)}</span>
-                    <svg className="w-4 h-4 text-gray-300 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                  <div className="flex-1 text-center px-3 py-2.5 bg-gray-50 border border-gray-100">
-                    <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Attended</p>
-                    <p className="text-[20px] font-bold leading-none text-gray-600">{fmtNum(mktAtt)}</p>
-                    <p className="text-[9px] text-gray-400 mt-0.5">email-sourced</p>
-                  </div>
-                </div>
-              </div>
-            );
-          })() : undefined}
         />
       </Card>
 
       </div>
-      )}
 
       {/* ════════════════════════════ ATTENDANCE ════════════════════════════════ */}
-      {(activeSection === 'attendance' || isExporting) && (
-      <div className="space-y-6">
+      <div id="sec-attendance" className="space-y-6" style={{ scrollMarginTop: 16 }}>
       {isExporting && <div className="pt-6 pb-3 flex items-center gap-3"><div className="w-1 h-7 bg-ansell-teal shrink-0" /><p className="text-[18px] font-extrabold uppercase tracking-[0.18em] text-ansell-dark">Attendance</p></div>}
 
+      {/* ── Section narrative ─────────────────────────────────────────────────── */}
+      {!isExporting && (
+        <div className="flex gap-16 items-start py-10 mb-6 border-b border-gray-100">
+          <div style={{ flex: '0 1 50%', minWidth: 0 }}>
+            <p className="text-[10px] font-bold uppercase tracking-[0.11em] text-ansell-dark mb-2">Attendance</p>
+            <p className="text-[28px] font-bold text-ansell-teal leading-tight uppercase mb-4">Show rate reveals audience intent.</p>
+            <p className="text-[13px] leading-relaxed text-gray-500">
+              The gap between registration and attendance is your no-show rate. ON24 2025 benchmarks: <strong className="text-gray-700">56% for live webinars</strong>, 45% for on-demand. Below 35% warrants investigation — are you sending enough reminder emails? Is the time slot right for your target region? <strong className="text-gray-700">On-demand availability</strong> can recapture no-shows post-event.
+            </p>
+          </div>
+          <div className="flex-1 flex flex-wrap gap-4 items-start pt-8">
+            <p className="text-[9px] font-bold uppercase tracking-[0.07em] text-gray-400 mb-2 w-full">KPIs to pay attention to</p>
+            <InsightCallout
+              label="Avg Attendance Rate"
+              value={fmtPct(totals.attRate)}
+              accent="teal"
+              sub={`${fmtNum(totals.att)} of ${fmtNum(totals.reg)} registered`}
+              benchmark={{ ours: totals.attRate, reference: 0.56, refLabel: 'ON24 live benchmark' }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Attendance KPIs */}
-      <div>
+      <div id="sub-att-metrics" style={{ scrollMarginTop: 16 }}>
         <SectionLabel tip="Aggregate attendance figures across all events in the loaded date range. Benchmarks from ON24 2025 Webinar Benchmarks Report.">
           Key Metrics
         </SectionLabel>
@@ -2005,7 +2043,7 @@ export default function InsightsPage() {
 
       {/* Best Attendance Rate */}
       {topAtt.length > 0 && (
-        <Card className="px-4 py-4" accent="teal">
+        <Card id="sub-att-best" className="px-4 py-4">
           <SectionLabel tip="Attendees ÷ registrants per event, showing only events with 10+ registrants to filter out small-sample outliers. High attendance rate indicates strong pre-event promotion and audience motivation.">
             Best Attendance Rate (min 10 registrants)
           </SectionLabel>
@@ -2023,7 +2061,7 @@ export default function InsightsPage() {
       {/* Day of Week + Language */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {dowStats.length > 0 && (
-          <Card className="px-4 py-4" accent="gray">
+          <Card id="sub-att-dow" className="px-4 py-4">
             <SectionLabel tip="Events grouped by the day of the week they started (based on event start timestamp). Shows avg attendance rate per day — useful for scheduling future events on higher-performing days.">
               Day of Week Performance
             </SectionLabel>
@@ -2036,7 +2074,7 @@ export default function InsightsPage() {
         )}
 
         {langStats.length > 0 && (
-          <Card className="px-4 py-4" accent="gray">
+          <Card id="sub-att-lang" className="px-4 py-4">
             <SectionLabel tip="Events grouped by the language code set in On24 (e.g. 'en', 'de', 'zh'). Bar width shows share of total events. Attendance rate and event count help identify language-specific performance patterns.">
               Language Breakdown
             </SectionLabel>
@@ -2059,15 +2097,43 @@ export default function InsightsPage() {
       </div>
 
       </div>
-      )}
 
       {/* ════════════════════════════ ENGAGEMENT ════════════════════════════════ */}
-      {(activeSection === 'engagement' || isExporting) && (
-      <div className="space-y-6">
+      <div id="sec-engagement" className="space-y-6" style={{ scrollMarginTop: 16 }}>
       {isExporting && <div className="pt-6 pb-3 flex items-center gap-3"><div className="w-1 h-7 bg-ansell-purple shrink-0" style={{background:'#7030A0'}} /><p className="text-[18px] font-extrabold uppercase tracking-[0.18em] text-ansell-dark">Engagement</p></div>}
 
+      {/* ── Section narrative ─────────────────────────────────────────────────── */}
+      {!isExporting && (() => {
+        const _totalInt = totals.qa + totals.polls + totals.surveys + totals.dl + totals.reactions;
+        const _ipa = totals.att > 0 ? _totalInt / totals.att : 0;
+        return (
+          <div className="flex gap-16 items-start py-10 mb-6 border-b border-gray-100">
+            <div style={{ flex: '0 1 50%', minWidth: 0 }}>
+              <p className="text-[10px] font-bold uppercase tracking-[0.11em] text-ansell-dark mb-2">Engagement</p>
+              <p className="text-[28px] font-bold text-ansell-teal leading-tight uppercase mb-4">Depth of interaction beyond showing up.</p>
+              <p className="text-[13px] leading-relaxed text-gray-500">
+                <strong className="text-gray-700">Interactions per Attendee (IPA)</strong> measures how actively participants engage — questions asked, polls answered, resources downloaded, and reactions. The ON24 2025 benchmark is <strong className="text-gray-700">1.7 IPA</strong>. High IPA identifies your most engaged contacts and signals topics that genuinely resonate with your audience.
+              </p>
+            </div>
+            <div className="flex-1 flex flex-wrap gap-4 items-start pt-8">
+              <p className="text-[9px] font-bold uppercase tracking-[0.07em] text-gray-400 mb-2 w-full">KPIs to pay attention to</p>
+              <InsightCallout
+                label="Interactions / Attendee"
+                value={_ipa > 0 ? _ipa.toFixed(2) : '—'}
+                accent="purple"
+                sub="Q&A + polls + surveys + DL"
+                benchmark={_ipa > 0 ? { ours: _ipa, reference: 1.7, refLabel: 'ON24 2025 benchmark' } : undefined}
+              />
+              {totals.qa > 0 && (
+                <InsightCallout label="Q&A Questions" value={fmtNum(totals.qa)} accent="blue" sub="across all events" />
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Engagement KPIs */}
-      <div>
+      <div id="sub-eng-metrics" style={{ scrollMarginTop: 16 }}>
         <SectionLabel tip="Aggregate engagement figures across all events. Requires attendee metrics to be loaded. Benchmarks from ON24 2025 Webinar Benchmarks Report.">
           Key Metrics
         </SectionLabel>
@@ -2165,7 +2231,7 @@ export default function InsightsPage() {
 
 
       {/* Performance Distribution */}
-      <Card className="px-4 py-4" accent="blue">
+      <Card id="sub-eng-dist" className="px-4 py-4">
         <SectionLabel tip={`Engagement scores bucketed relative to the best performer in this selection (score ${maxEng.toFixed(2)}). Tiers are Top ≥75%, Good 50–74%, Average 25–49%, Low <25% of the best score — so colours reflect relative performance within your data, not an absolute industry scale.`}>
           Performance Distribution
         </SectionLabel>
@@ -2207,7 +2273,7 @@ export default function InsightsPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
             {/* ── By Resource ── */}
-            <Card className="px-4 py-4" accent="violet">
+            <Card id="sub-eng-resource" className="px-4 py-4">
               <SectionLabel tip="Top downloaded assets across all events, sourced from the ON24 attendee endpoint (resourceviewed field).">
                 By Resource
               </SectionLabel>
@@ -2236,7 +2302,7 @@ export default function InsightsPage() {
             </Card>
 
             {/* ── By Webinar ── */}
-            <Card className="px-4 py-4" accent="violet">
+            <Card className="px-4 py-4">
               <SectionLabel tip="Total downloads per webinar. Click a row to expand individual asset breakdown.">
                 By Webinar
               </SectionLabel>
@@ -2287,7 +2353,7 @@ export default function InsightsPage() {
             </Card>
 
             {/* ── By Tag ── */}
-            <Card className="px-4 py-4" accent="violet">
+            <Card id="sub-eng-tag" className="px-4 py-4">
               <SectionLabel tip="Total downloads across all webinars sharing each tag. Click a row to expand asset breakdown for that tag.">
                 By Tag
               </SectionLabel>
@@ -2346,7 +2412,7 @@ export default function InsightsPage() {
 
       {/* Top vs Needs Attention */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="px-4 py-4" accent="teal">
+        <Card className="px-4 py-4">
           <SectionLabel tip="Ranked by engagement score. Bar width is relative to the best performer in this selection — the top event always fills 100%. Raw score shown in the sub-label.">
             Top Engagement
           </SectionLabel>
@@ -2357,7 +2423,7 @@ export default function InsightsPage() {
               sub={`score ${fmtEng(getEng(w))} · ${fmtNum(getAtt(w))} att · ${fmtPct(getAttRate(w))} rate`} />
           ))}
         </Card>
-        <Card className="px-4 py-4" accent="gray">
+        <Card className="px-4 py-4">
           <SectionLabel tip="Lowest-scoring events among those with attendees. Bar width is relative to the best performer — so even the lowest bar shows how far below the top they are.">
             Needs Attention
           </SectionLabel>
@@ -2486,7 +2552,7 @@ export default function InsightsPage() {
         const maxAttRate    = Math.max(...qualifiedSources.map(s => s.attendees / s.registrants), 0.001);
         const maxPerMetric  = metrics.map(m => Math.max(...qualifiedSources.map(q => m.get(q)), 0.001));
         return (
-          <Card className="px-4 py-4" accent="amber">
+          <Card id="sub-eng-source" className="px-4 py-4">
             <SectionLabel tip="Engagement rates per attendee by registration source. Only sources with ≥5 registrants shown. Bars are relative to the best performer in each column. Reactions column shows stacked breakdown by type.">
               Engagement by Source
             </SectionLabel>
@@ -2546,7 +2612,7 @@ export default function InsightsPage() {
 
       {/* Tag Performance */}
       {tagStats.length > 0 && (
-        <Card className="px-4 py-4" accent="blue">
+        <Card id="sub-eng-tagperf" className="px-4 py-4">
           <SectionLabel tip="For each tag, computes the average engagement score across all events carrying that tag. Only tags used on 2+ events are shown. Useful for identifying which content themes resonate best.">
             Tag Performance (avg engagement · min 2 events)
           </SectionLabel>
@@ -2559,12 +2625,40 @@ export default function InsightsPage() {
       )}
 
       </div>
-      )}
 
       {/* ════════════════════════════ REVENUE ════════════════════════════════════ */}
-      {(activeSection === 'revenue' || isExporting) && (
-      <div className="space-y-6">
+      <div id="sec-revenue" className="space-y-6" style={{ scrollMarginTop: 16 }}>
       {isExporting && <div className="pt-6 pb-3 flex items-center gap-3"><div className="w-1 h-7 bg-emerald-600 shrink-0" /><p className="text-[18px] font-extrabold uppercase tracking-[0.18em] text-ansell-dark">Revenue</p></div>}
+
+      {/* ── Section narrative ─────────────────────────────────────────────────── */}
+      {!isExporting && (
+        <div className="flex gap-16 items-start py-10 mb-6 border-b border-gray-100">
+          <div style={{ flex: '0 1 50%', minWidth: 0 }}>
+            <p className="text-[10px] font-bold uppercase tracking-[0.11em] text-ansell-dark mb-2">Revenue Attribution</p>
+            <p className="text-[28px] font-bold text-ansell-teal leading-tight uppercase mb-4">Connecting webinar activity to pipeline.</p>
+            <p className="text-[13px] leading-relaxed text-gray-500">
+              Marketo tracks opportunities <strong className="text-gray-700">influenced by webinar attendance</strong>. Mid-Touch (MT) Won shows closed-won deals where a contact attended a webinar during the sales cycle. This is influence, not direct causation — but it shows which programs operate within deals that close. Focus on programs with <strong className="text-gray-700">consistent MT Won attribution</strong> to justify continued investment.
+            </p>
+          </div>
+          {revenueData && (
+            <div className="flex-1 flex flex-wrap gap-4 items-start pt-8">
+              <p className="text-[9px] font-bold uppercase tracking-[0.07em] text-gray-400 mb-2 w-full">KPIs to pay attention to</p>
+              <InsightCallout
+                label="MT Won (Total)"
+                value={
+                  revenueData.totals.mtWon >= 1_000_000
+                    ? `$${(revenueData.totals.mtWon / 1_000_000).toFixed(1)}M`
+                    : revenueData.totals.mtWon >= 1_000
+                    ? `$${(revenueData.totals.mtWon / 1_000).toFixed(0)}K`
+                    : `$${Math.round(revenueData.totals.mtWon)}`
+                }
+                accent="teal"
+                sub={`${revenueData.programs.length} programs in report`}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* File bar + upload */}
       {!isExporting && <div className="flex items-center flex-wrap gap-2 px-1">
@@ -2712,12 +2806,12 @@ export default function InsightsPage() {
 
             {/* KPI cards */}
             <div className="grid grid-cols-2 gap-4">
-              <Card className="px-4 py-4" accent="blue">
+              <Card className="px-4 py-4">
                 <p className="text-[9px] font-bold uppercase tracking-widest text-ansell-gray mb-1">{attrLabel} Created</p>
                 <p className="text-[28px] font-extrabold leading-tight text-sky-600">{fmtRev(createdTotal)}</p>
                 <p className="text-[9px] text-gray-400 mt-0.5">pipeline created attributed · {visiblePrograms.filter(p => getCreated(p) > 0).length} programs</p>
               </Card>
-              <Card className="px-4 py-4" accent="teal">
+              <Card className="px-4 py-4">
                 <p className="text-[9px] font-bold uppercase tracking-widest text-ansell-gray mb-1">{attrLabel} Won</p>
                 <p className="text-[28px] font-extrabold leading-tight text-emerald-600">{fmtRev(wonTotal)}</p>
                 <p className="text-[9px] text-gray-400 mt-0.5">closed revenue attributed · {visiblePrograms.filter(p => getWon(p) > 0).length} programs</p>
@@ -2752,7 +2846,7 @@ export default function InsightsPage() {
               };
 
               return (
-                <Card className="px-4 py-4" accent="teal">
+                <Card id="sub-rev-tags" className="px-4 py-4">
                   <SectionLabel tip={`Tags associated with ${attrLabel} revenue. Size and colour intensity reflect Won revenue — largest tags drive the most attributed revenue. Respects the FT/MT and Matched/All toggles above.`}>
                     Tags by Revenue
                   </SectionLabel>
@@ -2785,7 +2879,7 @@ export default function InsightsPage() {
             })()}
 
             {/* Programs table */}
-            <Card className="px-4 py-4" accent="teal">
+            <Card id="sub-rev-programs" className="px-4 py-4">
               <SectionLabel tip={`${attrLabel} attribution: credit × Amount USD = attributed revenue. ${revShowAll ? 'All programs shown.' : 'Showing only programs matched to ON24 campaign codes.'} Sorted by ${attrLabel} Won + Created.`}>
                 {revShowAll ? `All Programs (${visiblePrograms.length})` : `ON24-Matched Programs (${visiblePrograms.length})`}
               </SectionLabel>
@@ -2866,8 +2960,8 @@ export default function InsightsPage() {
       })()}
 
       </div>
-      )}
 
+    </div>
     </div>
   );
 }
