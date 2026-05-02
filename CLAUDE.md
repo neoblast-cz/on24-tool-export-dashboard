@@ -25,6 +25,12 @@ CACHE_TTL_HOURS=24      # Optional, defaults to 24
 
 ## Architecture
 
+### Pages
+
+- `/insights` — default landing page (root redirects here). Scroll-based single-page analytics with sticky sidenav (IntersectionObserver scroll-spy). Sections: Cross-Findings · Setup · Registration · Attendance · Engagement · Revenue.
+- `/dashboard` — Export tab. Loads events, enriches with poll/survey/resource/CTA data, generates CSV.
+- `/recommendations` — reads from persisted `dashboardData` in Zustand store.
+
 ### Data flow
 
 ```
@@ -32,7 +38,15 @@ On24 API ──► /api/on24/* routes ──► Zustand store (localStorage) ─
                    │
             On24Client singleton
             (auth headers, retry, pagination)
+
+reports/*.xlsx ──► /api/revenue/* or /api/marketo/* ──► Insights page (Revenue/Setup tabs)
 ```
+
+### Two data stores in Zustand
+
+`dashboardData` (persisted to localStorage, 24-hour TTL) — fetched by the Export/Dashboard tab, read by the Recommendations page.
+
+`liveWebinars` / `liveCtaCounts` (not persisted) — written by Dashboard tab after enrichment, read directly by Insights. When Insights is the entry point or the date filter changes, it self-fetches via `filterVersion` increment which triggers a `useEffect` re-fetch of `/api/on24/events`.
 
 ### Key layers
 
@@ -48,23 +62,25 @@ Singleton returned by `getOn24Client()`. Handles auth headers (`accesstokenkey` 
 All routes that use `searchParams` must have `export const dynamic = 'force-dynamic'`.
 
 **Revenue & Marketo routes** (`src/app/api/revenue/`, `src/app/api/marketo/`)
-- Files stored in `reports/` directory, differentiated by filename pattern: Revenue files match `/revenue attribution/i`, Marketo files require `/program membership/i`.
+- Files stored in `reports/` directory (gitignored), parsed with the `xlsx` package. Revenue files match `/revenue attribution/i`; Marketo files match `/program membership/i`.
 - Naming convention enforced on upload: `YYYY-MM-DD Revenue Attribution.xlsx` / `YYYY-MM-DD Program Membership.xlsx`.
-- Each has `data/` (GET with optional `?file=` param, defaults to latest), `upload/` (POST), and `files/` (GET list + DELETE) routes.
+- Each domain has `data/` (GET, optional `?file=` param, defaults to latest), `upload/` (POST), and `files/` (GET list + DELETE) routes.
 - Path-traversal protection on delete: reject filenames containing `/`, `\`, or `..`.
 
 **Zustand store** (`src/store/webinar-store.ts`)
-Persists dashboard data and date filter to localStorage (24-hour TTL via `isCacheValid()`). Attendee metrics are stored per event after batch loading. `filterVersion` increments to trigger re-fetches when the date filter changes.
+Persists dashboard data and date filter to localStorage (24-hour TTL via exported `isCacheValid()`). Attendee metrics are stored per event after batch loading. `filterVersion` increments whenever the user applies a date range to trigger re-fetches on pages that are already mounted.
 
 **CSV generator** (`src/lib/csv/generator.ts`)
 60+ configurable columns. Attendee-derived columns have `am_` prefix and require `attendeeMetrics.loaded`. BOM prefix included for Excel UTF-8 compatibility.
 
 **Insights page** (`src/app/insights/page.tsx`)
-Large single-file component (~2000+ lines). Tabs: Setup | Registration | Attendance | Engagement | Revenue. Key computed values:
+Large single-file component (~3000 lines). Key computed values:
+- `ANALYSIS_TYPES` — set of event types included in analysis (`webcast`, `on demand`, `live video and audio`). Events outside this set appear in the "excluded" count shown in the Event IDs toggle.
 - `mktMatchedPrograms` — Marketo programs cross-referenced against `filteredWebinars` by campaign code (strips `*suffix` on both sides).
 - `mktMissingWebinars` — ON24 events with campaign codes absent from the Marketo report.
+- `CANONICAL` / `PREFIX_MAP` — source normalisation tables that collapse UTM/partnerref variants (e.g. `lk`, `ln`, `emea_li` → `linkedin`) before charting registration sources.
 - Revenue tab shows Marketo Successes (MT) or New Names (FT) column alongside pipeline/revenue.
-- `funnelSlot` prop on `RegistrationSources` injects the Email Invite Funnel into the right column above Best Attendance Rate.
+- PNG and HTML export via `html2canvas` (dynamic import) and `document.querySelector` serialisation.
 
 ### Types
 
@@ -80,4 +96,5 @@ Key implementation notes for this codebase:
 - `showLoading()` / `showEmpty()` / `showDash()` state machine → React `useState` / `useEffect`.
 - Chart.js + `<canvas>` → Recharts (SVG). DESIGN.md color palettes still apply.
 - CSS custom properties (`--ansell-blue`, `--ansell-teal`, `--danger-red`, etc.) are defined in `globals.css` and mirrored as Tailwind color tokens (`ansell-blue`, `ansell-teal`) in `tailwind.config.ts`.
-- Border radius: `globals.css` applies `8px` globally. Chart/card containers follow the no-radius intent from DESIGN.md via `rounded-none` where needed.
+- Border radius: `globals.css` applies `4px` globally via `* { border-radius: 4px !important }`. Chart/card containers use `rounded-none` to opt out. The `rounded-full` exception is preserved for pills/spinners.
+- `scrollMarginTop: 16` is set on all `Card` elements (via the component's inline style) so anchor scroll links offset correctly under the sticky header.
