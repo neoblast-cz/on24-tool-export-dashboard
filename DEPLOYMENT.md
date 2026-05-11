@@ -39,7 +39,8 @@ Redis         ~/reports/  — xlsx files (host volume, persists across container
 | Client ID | `783bab4f-2cc4-471c-95c2-b46c163c3cd2` |
 | Redirect URI | `https://on24.ansell.com/oauth2/callback` |
 | Account type | Single tenant (Ansell only — `@ansell.com`) |
-| Secret expiry | 24 months |
+| Secret created | ~2026-04-25 |
+| Secret expiry | 24 months → renew by ~2028-04-25 |
 | Session storage | Redis |
 | Session duration | 168 hours (7 days) |
 
