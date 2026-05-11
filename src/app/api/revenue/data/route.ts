@@ -12,7 +12,11 @@ export const dynamic = 'force-dynamic';
 export interface ProgramRevenue {
   programName: string;
   opportunityCount: number;      // unique opportunity IDs
-  opportunityIds: string[];      // first 20 unique opp IDs
+  opportunityIds: string[];      // first 20 unique opp IDs (all)
+  mtWonOpportunityIds: string[];
+  mtCreatedOpportunityIds: string[];
+  ftWonOpportunityIds: string[];
+  ftCreatedOpportunityIds: string[];
   ftCreated: number;             // sum(credit × amountUSD)
   ftWon: number;
   mtCreated: number;
@@ -97,6 +101,10 @@ export async function GET(req: NextRequest) {
     // Aggregate by program name
     const programMap = new Map<string, {
       oppIds: Set<string>;
+      mtWonOppIds: Set<string>;
+      mtCreatedOppIds: Set<string>;
+      ftWonOppIds: Set<string>;
+      ftCreatedOppIds: Set<string>;
       ftCreated: number;
       ftWon: number;
       mtCreated: number;
@@ -118,12 +126,20 @@ export async function GET(req: NextRequest) {
       if (!programMap.has(programName)) {
         programMap.set(programName, {
           oppIds: new Set(),
+          mtWonOppIds: new Set(), mtCreatedOppIds: new Set(),
+          ftWonOppIds: new Set(), ftCreatedOppIds: new Set(),
           ftCreated: 0, ftWon: 0, mtCreated: 0, mtWon: 0,
           totalOpportunityValue: 0,
         });
       }
       const entry = programMap.get(programName)!;
-      if (oppId) entry.oppIds.add(oppId);
+      if (oppId) {
+        entry.oppIds.add(oppId);
+        if (mtWonCredit > 0)     entry.mtWonOppIds.add(oppId);
+        if (mtCreatedCredit > 0) entry.mtCreatedOppIds.add(oppId);
+        if (ftWonCredit > 0)     entry.ftWonOppIds.add(oppId);
+        if (ftCreatedCredit > 0) entry.ftCreatedOppIds.add(oppId);
+      }
       entry.ftCreated += ftCreatedCredit * amountUSD;
       entry.ftWon += ftWonCredit * amountUSD;
       entry.mtCreated += mtCreatedCredit * amountUSD;
@@ -165,6 +181,10 @@ export async function GET(req: NextRequest) {
         programName,
         opportunityCount: entry.oppIds.size,
         opportunityIds: Array.from(entry.oppIds).slice(0, 20),
+        mtWonOpportunityIds: Array.from(entry.mtWonOppIds).slice(0, 20),
+        mtCreatedOpportunityIds: Array.from(entry.mtCreatedOppIds).slice(0, 20),
+        ftWonOpportunityIds: Array.from(entry.ftWonOppIds).slice(0, 20),
+        ftCreatedOpportunityIds: Array.from(entry.ftCreatedOppIds).slice(0, 20),
         ftCreated: Math.round(entry.ftCreated * 100) / 100,
         ftWon: Math.round(entry.ftWon * 100) / 100,
         mtCreated: Math.round(entry.mtCreated * 100) / 100,

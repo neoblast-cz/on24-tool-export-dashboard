@@ -2640,23 +2640,33 @@ export default function InsightsPage() {
               Marketo tracks opportunities <strong className="text-gray-700">influenced by webinar attendance</strong>. Mid-Touch (MT) Won shows closed-won deals where a contact attended a webinar during the sales cycle. This is influence, not direct causation — but it shows which programs operate within deals that close. Focus on programs with <strong className="text-gray-700">consistent MT Won attribution</strong> to justify continued investment.
             </p>
           </div>
-          {revenueData && (
-            <div className="flex-1 flex flex-wrap gap-4 items-start pt-8">
-              <p className="text-[9px] font-bold uppercase tracking-[0.07em] text-gray-400 mb-2 w-full">KPIs to pay attention to</p>
-              <InsightCallout
-                label="MT Won (Total)"
-                value={
-                  revenueData.totals.mtWon >= 1_000_000
-                    ? `$${(revenueData.totals.mtWon / 1_000_000).toFixed(1)}M`
-                    : revenueData.totals.mtWon >= 1_000
-                    ? `$${(revenueData.totals.mtWon / 1_000).toFixed(0)}K`
-                    : `$${Math.round(revenueData.totals.mtWon)}`
-                }
-                accent="teal"
-                sub={`${revenueData.programs.length} programs in report`}
-              />
-            </div>
-          )}
+          {revenueData && (() => {
+            const isMT = revAttribution === 'mt';
+            const campCodes = new Set<string>();
+            for (const w of filteredWebinars) {
+              if (w.campaignName) {
+                campCodes.add(w.campaignName);
+                campCodes.add(w.campaignName.replace(/\*[^*]*$/, ''));
+              }
+            }
+            const matchedPrograms = revenueData.programs.filter(p => {
+              const stripped = p.programName.replace(/\*[^*]*$/, '');
+              return campCodes.has(p.programName) || campCodes.has(stripped);
+            });
+            const matchedWon = matchedPrograms.reduce((s, p) => s + (isMT ? p.mtWon : p.ftWon), 0);
+            const fmtW = (n: number) => n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${(n / 1_000).toFixed(0)}K` : `$${Math.round(n)}`;
+            return (
+              <div className="flex-1 flex flex-wrap gap-4 items-start pt-8">
+                <p className="text-[9px] font-bold uppercase tracking-[0.07em] text-gray-400 mb-2 w-full">KPIs to pay attention to</p>
+                <InsightCallout
+                  label={`${isMT ? 'MT' : 'FT'} Won (Matched)`}
+                  value={fmtW(matchedWon)}
+                  accent="teal"
+                  sub={`${matchedPrograms.length} matched programs`}
+                />
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -2929,11 +2939,31 @@ export default function InsightsPage() {
                                   {matches.length > 2 && <span className="text-emerald-400">+{matches.length - 2} more</span>}
                                 </div>
                               )}
-                              {p.opportunityIds && p.opportunityIds.length > 0 && (
-                                <div className="text-[9px] text-gray-400 mt-0.5 font-mono leading-relaxed">
-                                  {p.opportunityIds.join(' · ')}
-                                </div>
-                              )}
+                              {(() => {
+                                const wonIds  = isMT ? p.mtWonOpportunityIds     : p.ftWonOpportunityIds;
+                                const wonSet  = new Set(wonIds);
+                                const pipeIds = (isMT ? p.mtCreatedOpportunityIds : p.ftCreatedOpportunityIds).filter(id => !wonSet.has(id));
+                                if (wonIds.length === 0 && pipeIds.length === 0) return null;
+                                const sfLink = (id: string) => `https://myansell.lightning.force.com/lightning/r/Opportunity/${id}/view`;
+                                return (
+                                  <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+                                    {wonIds.map(id => (
+                                      <a key={id} href={sfLink(id)} target="_blank" rel="noreferrer"
+                                        className="text-[9px] font-mono text-emerald-700 hover:text-emerald-500 underline decoration-dotted"
+                                        title="Revenue (Won)">
+                                        {id}
+                                      </a>
+                                    ))}
+                                    {pipeIds.map(id => (
+                                      <a key={id} href={sfLink(id)} target="_blank" rel="noreferrer"
+                                        className="text-[9px] font-mono text-sky-600 hover:text-sky-400 underline decoration-dotted"
+                                        title="Pipeline (Created)">
+                                        {id}
+                                      </a>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
                             </td>
                             <td className="py-2 text-right text-[11px] text-purple-700 pl-4 align-top">{(() => { const v = getMktVal(p.programName); return v !== null && v > 0 ? fmtNum(v) : '—'; })()}</td>
                             <td className="py-2 text-right text-[11px] text-sky-700 pl-4 align-top">{created > 0 ? fmtRev(created) : '—'}</td>
