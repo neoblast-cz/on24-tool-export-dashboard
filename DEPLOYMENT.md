@@ -109,7 +109,14 @@ sudo systemctl restart nginx
 sudo apt update && sudo apt upgrade -y
 ```
 
-**Deploy a new app version** (transfer `on24-dashboard.tar` via WinSCP first):
+**Build the image locally** (run from project root, requires Docker Desktop):
+```bash
+docker build -t on24-dashboard:local .
+docker save on24-dashboard:local -o on24-dashboard.tar
+```
+Then transfer `on24-dashboard.tar` to the VM via WinSCP (`/home/on24admin/`).
+
+**Deploy a new app version** (on the VM, after transferring the tar):
 ```bash
 docker stop on24-dashboard && docker rm on24-dashboard
 docker load < on24-dashboard.tar
