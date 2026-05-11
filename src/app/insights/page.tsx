@@ -2940,9 +2940,9 @@ export default function InsightsPage() {
                                 </div>
                               )}
                               {(() => {
-                                const wonIds  = isMT ? p.mtWonOpportunityIds     : p.ftWonOpportunityIds;
+                                const wonIds  = (isMT ? p.mtWonOpportunityIds     : p.ftWonOpportunityIds)     ?? [];
                                 const wonSet  = new Set(wonIds);
-                                const pipeIds = (isMT ? p.mtCreatedOpportunityIds : p.ftCreatedOpportunityIds).filter(id => !wonSet.has(id));
+                                const pipeIds = ((isMT ? p.mtCreatedOpportunityIds : p.ftCreatedOpportunityIds) ?? []).filter(id => !wonSet.has(id));
                                 if (wonIds.length === 0 && pipeIds.length === 0) return null;
                                 const sfLink = (id: string) => `https://myansell.lightning.force.com/lightning/r/Opportunity/${id}/view`;
                                 return (
