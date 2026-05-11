@@ -23,6 +23,10 @@ ON24_API_BASE_URL=      # https://api.on24.com/v2  (use api.eu.on24.com/v2 for E
 CACHE_TTL_HOURS=24      # Optional, defaults to 24
 ```
 
+## Deployment
+
+See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for the full production setup: Azure VM, Docker containers, Nginx, oauth2-proxy (Azure AD), Redis sessions, and maintenance runbooks.
+
 ## Architecture
 
 ### Pages
