@@ -1425,6 +1425,7 @@ export default function InsightsPage() {
         { key: 'revenue' as const, label: 'Revenue', color: '#059669', items: [
           { label: 'Tags by Revenue', id: 'sub-rev-tags' },
           { label: 'Programs', id: 'sub-rev-programs' },
+          { label: 'Slide Canvas', id: 'sub-rev-slide' },
         ]},
       ];
       const q = navQuery.toLowerCase();
@@ -2986,6 +2987,57 @@ export default function InsightsPage() {
               )}
             </Card>
           </>
+        );
+      })()}
+
+      {/* ── Slide Canvas ─────────────────────────────────────────────────────── */}
+      {(() => {
+        const COLS = 15;
+        const ROWS = ['a','b','c','d','e','f','g','h','i','j'] as const;
+        return (
+          <Card id="sub-rev-slide" className="px-4 py-4">
+            <SectionLabel tip="Fixed 15×10 grid for slide layout. Reference cells by row letter (a–j) and column number (1–15), e.g. a1–c3 spans rows a to c, columns 1 to 3.">
+              Slide Canvas
+            </SectionLabel>
+            <div className="mt-3 select-none" style={{ fontFamily: 'monospace' }}>
+              {/* Column headers */}
+              <div className="flex" style={{ marginLeft: 20 }}>
+                {Array.from({ length: COLS }, (_, i) => (
+                  <div key={i} className="flex-1 text-center text-[8px] text-gray-300 pb-0.5">{i + 1}</div>
+                ))}
+              </div>
+              <div className="flex">
+                {/* Row headers */}
+                <div className="flex flex-col shrink-0" style={{ width: 20 }}>
+                  {ROWS.map(r => (
+                    <div key={r} className="flex items-center justify-center text-[8px] text-gray-300" style={{ height: 'calc(100% / 10)' }}>{r}</div>
+                  ))}
+                </div>
+                {/* Grid */}
+                <div
+                  className="flex-1 border border-gray-200"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${COLS}, 1fr)`,
+                    gridTemplateRows: `repeat(${ROWS.length}, 1fr)`,
+                    aspectRatio: `${COLS} / ${ROWS.length}`,
+                  }}
+                >
+                  {ROWS.map(row =>
+                    Array.from({ length: COLS }, (_, col) => (
+                      <div
+                        key={`${row}${col + 1}`}
+                        className="border border-dashed border-gray-100 flex items-start justify-start"
+                        style={{ padding: '2px 3px' }}
+                      >
+                        <span className="text-[6px] text-gray-200 leading-none">{row}{col + 1}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </Card>
         );
       })()}
 
