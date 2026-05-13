@@ -3106,11 +3106,31 @@ export default function InsightsPage() {
             pctChange: matchedWon !== null ? delta(matchedWon, prevMatchedWon) : null },
         ];
 
+        // Compute display dates
+        const todayStr = new Date().toISOString().split('T')[0];
+        const thirtyAgoStr = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0]; })();
+        const curStart = filterStartDate || thirtyAgoStr;
+        const curEnd   = filterEndDate   || todayStr;
+        const durMs    = new Date(curEnd).getTime() - new Date(curStart).getTime();
+        const pEnd     = new Date(new Date(curStart).getTime() - 86400000);
+        const pStart   = new Date(pEnd.getTime() - durMs);
+        const fmtD = (d: Date | string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
         return (
           <Card id="sub-rev-slide" className="px-4 py-4">
-            <SectionLabel tip="Fixed 15×10 grid for slide layout. Reference cells by row letter (a–j) and column number (1–15), e.g. a1–c3 spans rows a to c, columns 1 to 3.">
-              Slide Canvas
-            </SectionLabel>
+            <div className="flex items-baseline gap-3 mb-2">
+              <div className="flex items-center gap-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-ansell-gray">Slide Canvas</p>
+                <InfoTip text="Fixed 15×10 grid for slide layout. Reference cells by row letter (a–j) and column number (1–15), e.g. a1–c3 spans rows a to c, columns 1 to 3." />
+              </div>
+              <span className="text-[10px] text-gray-500 font-medium">
+                {fmtD(curStart)} – {fmtD(curEnd)}
+              </span>
+              <span className="text-[10px] text-gray-300">vs</span>
+              <span className="text-[10px] text-gray-400">
+                {fmtD(pStart)} – {fmtD(pEnd)}
+              </span>
+            </div>
             <div className="mt-3 select-none" style={{ fontFamily: 'monospace' }}>
               {/* Column headers */}
               <div className="flex" style={{ marginLeft: 20 }}>
@@ -3126,7 +3146,7 @@ export default function InsightsPage() {
                   ))}
                 </div>
                 {/* Grid — relative container, two layers */}
-                <div className="flex-1 relative border border-gray-200"
+                <div className="flex-1 relative border border-gray-200 bg-gray-200"
                   style={{ height: ROWS.length * ROW_H + (ROWS.length - 1) * GAP }}>
 
                   {/* Layer 1: coord background */}
