@@ -733,6 +733,7 @@ export default function InsightsPage() {
   const sourcesRef = useRef(false);
 
   const [showEventIds, setShowEventIds] = useState(false);
+  const [prevWebinars, setPrevWebinars] = useState<WebinarSummary[]>([]);
   const [activeSection, setActiveSection] = useState<'setup' | 'registration' | 'attendance' | 'engagement' | 'revenue' | null>('setup');
   const [navQuery, setNavQuery] = useState('');
 
@@ -1051,6 +1052,28 @@ export default function InsightsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterVersion]);
 
+  // Fetch previous period (same duration, ending day before current start) for slide % change
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const thirtyAgo = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0]; })();
+    const start = filterStartDate || thirtyAgo;
+    const end   = filterEndDate   || today;
+    const durationMs = new Date(end).getTime() - new Date(start).getTime();
+    const prevEnd   = new Date(new Date(start).getTime() - 86400000);
+    const prevStart = new Date(prevEnd.getTime() - durationMs);
+    fetch(`/api/on24/events?startDate=${prevStart.toISOString().split('T')[0]}&endDate=${prevEnd.toISOString().split('T')[0]}`)
+      .then(r => r.json())
+      .then(result => {
+        if (result.success) {
+          setPrevWebinars((result.data?.webinars || []).filter(
+            (w: WebinarSummary) => !w.isTest && ANALYSIS_TYPES.has((w.eventType || '').toLowerCase())
+          ));
+        }
+      })
+      .catch(() => setPrevWebinars([]));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterVersion]);
+
   // Load revenue data + files list once
   useEffect(() => {
     if (revenueRef.current) return;
@@ -1107,6 +1130,19 @@ export default function InsightsPage() {
     const livePct    = (liveMin + archiveMin) > 0 ? liveMin / (liveMin + archiveMin) : 0;
     return { reg, att, noShow, qa, polls, surveys, dl, reactions, ctaTotal, viewHours, attRate, noShowRate, livePct };
   }, [filteredWebinars, liveCtaCounts]);
+
+  // ── Previous period aggregate (for slide canvas % change) ────────────────────
+  const prevTotals = useMemo(() => {
+    if (prevWebinars.length === 0) return null;
+    let reg = 0, att = 0, qa = 0, polls = 0, surveys = 0, dl = 0, reactions = 0, cta = 0;
+    for (const w of prevWebinars) {
+      reg += getReg(w); att += getAtt(w);
+      qa += getQA(w); polls += getPolls(w); surveys += getSurveys(w);
+      dl += getDL(w); reactions += getReactions(w); cta += liveCtaCounts[w.eventId] ?? 0;
+    }
+    const ipa = att > 0 ? (qa + polls + surveys + dl + reactions + cta) / att : 0;
+    return { eventCount: prevWebinars.length, reg, attRate: reg > 0 ? att / reg : 0, ipa };
+  }, [prevWebinars, liveCtaCounts]);
 
   // ── Performance distribution (relative to best in selection) ─────────────────
   const maxEng = useMemo(() => Math.max(...filteredWebinars.map(getEng), 0.01), [filteredWebinars]);
@@ -2994,15 +3030,18 @@ export default function InsightsPage() {
       {(() => {
         const COLS = 15;
         const ROWS = ['a','b','c','d','e','f','g','h','i','j'] as const;
+        const ROW_H = 90; // px per row
+        const GAP   = 3;  // px gap between cells
         const GRID_STYLE: React.CSSProperties = {
           display: 'grid',
           gridTemplateColumns: `repeat(${COLS}, 1fr)`,
-          gridTemplateRows: `repeat(${ROWS.length}, 1fr)`,
+          gridTemplateRows: `repeat(${ROWS.length}, ${ROW_H}px)`,
+          gap: GAP,
         };
 
-        // Compute slide metrics
+        // Current metrics
         const totalInteractions = totals.qa + totals.polls + totals.surveys + totals.dl + totals.reactions + totals.ctaTotal;
-        const ipa = totals.att > 0 ? (totalInteractions / totals.att).toFixed(1) : '—';
+        const ipa = totals.att > 0 ? totalInteractions / totals.att : 0;
 
         const campCodes = new Set<string>();
         for (const w of filteredWebinars) {
@@ -3016,18 +3055,55 @@ export default function InsightsPage() {
               .filter(p => campCodes.has(p.programName) || campCodes.has(p.programName.replace(/\*[^*]*$/, '')))
               .reduce((s, p) => s + p.mtWon, 0)
           : null;
+
+        // Previous period matched revenue
+        const prevMatchedWon = revenueData && prevWebinars.length > 0
+          ? (() => {
+              const prevCodes = new Set<string>();
+              for (const w of prevWebinars) {
+                if (w.campaignName) {
+                  prevCodes.add(w.campaignName);
+                  prevCodes.add(w.campaignName.replace(/\*[^*]*$/, ''));
+                }
+              }
+              return revenueData.programs
+                .filter(p => prevCodes.has(p.programName) || prevCodes.has(p.programName.replace(/\*[^*]*$/, '')))
+                .reduce((s, p) => s + p.mtWon, 0);
+            })()
+          : null;
+
         const fmtRev = (n: number) =>
           n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M`
           : n >= 1_000   ? `$${(n / 1_000).toFixed(0)}K`
           : `$${Math.round(n)}`;
+        const fmtBig = (n: number) =>
+          n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M`
+          : n >= 1_000   ? `${(n / 1_000).toFixed(1)}k`
+          : String(Math.round(n));
 
-        type SlotDef = { col: string; row: string; label: string; value: string; color: string };
+        // % change helper
+        const delta = (curr: number, prev: number | null | undefined): number | null => {
+          if (prev == null || prev === 0) return null;
+          return ((curr - prev) / prev) * 100;
+        };
+
+        type SlotDef = { col: string; row: string; label: string; value: string; color: string; pctChange: number | null };
         const SLOTS: SlotDef[] = [
-          { col: '1/4',  row: '1/2', label: 'Events',        value: String(filteredWebinars.length),                                                     color: '#0063AC' },
-          { col: '4/7',  row: '1/2', label: 'Registrants',   value: totals.reg >= 1000 ? `${(totals.reg / 1000).toFixed(1)}k` : String(totals.reg),       color: '#00A28F' },
-          { col: '7/10', row: '1/2', label: 'Attendance',     value: fmtPct(totals.attRate),                                                               color: '#059669' },
-          { col: '10/13',row: '1/2', label: 'IPA',            value: ipa,                                                                                  color: '#7030A0' },
-          { col: '13/16',row: '1/2', label: 'MT Won (matched)', value: matchedWon !== null ? fmtRev(matchedWon) : '—',                                     color: '#D97706' },
+          { col: '1/4',   row: '1/2', label: 'Events',          color: '#0063AC',
+            value: String(filteredWebinars.length),
+            pctChange: delta(filteredWebinars.length, prevTotals?.eventCount) },
+          { col: '4/7',   row: '1/2', label: 'Registrants',     color: '#00A28F',
+            value: fmtBig(totals.reg),
+            pctChange: delta(totals.reg, prevTotals?.reg) },
+          { col: '7/10',  row: '1/2', label: 'Attendance',       color: '#059669',
+            value: fmtPct(totals.attRate),
+            pctChange: delta(totals.attRate, prevTotals?.attRate) },
+          { col: '10/13', row: '1/2', label: 'IPA',              color: '#7030A0',
+            value: ipa.toFixed(1),
+            pctChange: delta(ipa, prevTotals?.ipa) },
+          { col: '13/16', row: '1/2', label: 'MT Won (matched)', color: '#D97706',
+            value: matchedWon !== null ? fmtRev(matchedWon) : '—',
+            pctChange: matchedWon !== null ? delta(matchedWon, prevMatchedWon) : null },
         ];
 
         return (
@@ -3046,17 +3122,18 @@ export default function InsightsPage() {
                 {/* Row headers */}
                 <div className="flex flex-col shrink-0" style={{ width: 20 }}>
                   {ROWS.map(r => (
-                    <div key={r} className="flex items-center justify-center text-[8px] text-gray-300" style={{ height: 'calc(100% / 10)' }}>{r}</div>
+                    <div key={r} className="flex items-center justify-center text-[8px] text-gray-300" style={{ height: ROW_H }}>{r}</div>
                   ))}
                 </div>
                 {/* Grid — relative container, two layers */}
-                <div className="flex-1 relative border border-gray-200" style={{ aspectRatio: `${COLS} / ${ROWS.length}` }}>
+                <div className="flex-1 relative border border-gray-200"
+                  style={{ height: ROWS.length * ROW_H + (ROWS.length - 1) * GAP }}>
 
                   {/* Layer 1: coord background */}
                   <div className="absolute inset-0" style={{ ...GRID_STYLE, pointerEvents: 'none' }}>
                     {ROWS.map(row =>
                       Array.from({ length: COLS }, (_, col) => (
-                        <div key={`${row}${col + 1}`} className="border border-dashed border-gray-100 flex items-start justify-start" style={{ padding: '2px 3px' }}>
+                        <div key={`${row}${col + 1}`} className="border border-dashed border-gray-100 bg-gray-50 flex items-start justify-start" style={{ padding: '2px 3px' }}>
                           <span className="text-[6px] text-gray-200 leading-none">{row}{col + 1}</span>
                         </div>
                       ))
@@ -3065,14 +3142,19 @@ export default function InsightsPage() {
 
                   {/* Layer 2: content */}
                   <div className="absolute inset-0" style={GRID_STYLE}>
-                    {SLOTS.map(({ col, row, label, value, color }) => (
+                    {SLOTS.map(({ col, row, label, value, color, pctChange }) => (
                       <div
                         key={label}
                         style={{ gridColumn: col, gridRow: row, borderTop: `3px solid ${color}` }}
-                        className="bg-white flex flex-col items-center justify-center gap-0.5 p-1"
+                        className="bg-white flex flex-col items-center justify-center p-2"
                       >
-                        <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color }}>{value}</span>
-                        <span className="text-[7px] uppercase tracking-widest text-gray-400 text-center leading-tight">{label}</span>
+                        <span className="text-[28px] font-extrabold leading-none" style={{ color }}>{value}</span>
+                        <span className="text-[8px] uppercase tracking-widest text-gray-400 text-center mt-1 leading-tight">{label}</span>
+                        {pctChange !== null && (
+                          <span className={`text-[9px] font-bold mt-1 ${pctChange >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                            {pctChange >= 0 ? '▲' : '▼'} {Math.abs(pctChange).toFixed(0)}% vs prev period
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>
