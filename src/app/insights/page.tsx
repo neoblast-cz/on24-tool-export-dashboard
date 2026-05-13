@@ -3087,8 +3087,27 @@ export default function InsightsPage() {
           return ((curr - prev) / prev) * 100;
         };
 
-        type SlotDef = { col: string; row: string; label: string; value: string; color: string; pctChange: number | null };
+        // Email invite funnel (row b, cols 1-3)
+        const mktInvited   = mktMatchedPrograms.reduce((s, p) => s + p.members, 0);
+        const { tracked: trackedForSlide } = mergeSources(sources);
+        const mktSrcSlide  = trackedForSlide.find(s => s.code === 'marketo');
+        const emailReg     = mktSrcSlide?.registrants ?? 0;
+        const emailAtt     = mktSrcSlide?.attendees   ?? 0;
+        const emailRegPct  = mktInvited > 0 ? emailReg / mktInvited : 0;
+        const emailAttPct  = emailReg   > 0 ? emailAtt / emailReg   : 0;
+
+        // Best attendance day (row b, col 6)
+        const bestDow = dowStats.length > 0
+          ? [...dowStats].sort((a, b) => b.attRate - a.attRate)[0]
+          : null;
+
+        type SlotDef = {
+          col: string; row: string; label: string; color: string;
+          value?: string; sub?: string; pctChange?: number | null;
+          custom?: React.ReactNode;
+        };
         const SLOTS: SlotDef[] = [
+          // ── Row a ──────────────────────────────────────────────────────────────
           { col: '1/4',   row: '1/2', label: 'Events',          color: '#0063AC',
             value: String(filteredWebinars.length),
             pctChange: delta(filteredWebinars.length, prevTotals?.eventCount) },
@@ -3104,6 +3123,37 @@ export default function InsightsPage() {
           { col: '13/16', row: '1/2', label: 'MT Won (matched)', color: '#D97706',
             value: matchedWon !== null ? fmtRev(matchedWon) : '—',
             pctChange: matchedWon !== null ? delta(matchedWon, prevMatchedWon) : null },
+
+          // ── Row b ──────────────────────────────────────────────────────────────
+          { col: '1/4', row: '2/3', label: 'Email Invite Funnel', color: '#0063AC',
+            custom: (
+              <div className="w-full h-full flex flex-col justify-center p-3" style={{ borderTop: '3px solid #0063AC' }}>
+                <p className="text-[7px] font-bold uppercase tracking-widest text-gray-400 mb-2">Email Invite Funnel</p>
+                <div className="flex items-center justify-around gap-1">
+                  <div className="text-center">
+                    <p className="text-[22px] font-extrabold leading-none" style={{ color: '#0063AC' }}>{fmtBig(mktInvited)}</p>
+                    <p className="text-[7px] uppercase tracking-wider text-gray-400 mt-0.5">Invited</p>
+                  </div>
+                  <span className="text-gray-300 text-[10px] shrink-0">→</span>
+                  <div className="text-center">
+                    <p className="text-[22px] font-extrabold leading-none" style={{ color: '#00A28F' }}>{fmtPct(emailRegPct)}</p>
+                    <p className="text-[7px] uppercase tracking-wider text-gray-400 mt-0.5">Registered</p>
+                  </div>
+                  <span className="text-gray-300 text-[10px] shrink-0">→</span>
+                  <div className="text-center">
+                    <p className="text-[22px] font-extrabold leading-none" style={{ color: '#059669' }}>{fmtPct(emailAttPct)}</p>
+                    <p className="text-[7px] uppercase tracking-wider text-gray-400 mt-0.5">Attended</p>
+                  </div>
+                </div>
+              </div>
+            ) },
+          { col: '4/5', row: '2/3', label: 'Live Viewing',   color: '#0063AC',
+            value: fmtPct(totals.livePct) },
+          { col: '5/6', row: '2/3', label: 'On Demand',      color: '#00A28F',
+            value: fmtPct(1 - totals.livePct) },
+          { col: '6/7', row: '2/3', label: 'Best Att. Day',  color: '#7030A0',
+            value: bestDow?.name ?? '—',
+            sub: bestDow ? fmtPct(bestDow.attRate) : undefined },
         ];
 
         // Compute display dates
@@ -3162,18 +3212,23 @@ export default function InsightsPage() {
 
                   {/* Layer 2: content */}
                   <div className="absolute inset-0" style={GRID_STYLE}>
-                    {SLOTS.map(({ col, row, label, value, color, pctChange }) => (
+                    {SLOTS.map(({ col, row, label, value, sub, color, pctChange, custom }) => (
                       <div
                         key={label}
-                        style={{ gridColumn: col, gridRow: row, borderTop: `3px solid ${color}` }}
-                        className="bg-white flex flex-col items-center justify-center p-2"
+                        style={{ gridColumn: col, gridRow: row, ...(!custom ? { borderTop: `3px solid ${color}` } : {}) }}
+                        className="bg-white overflow-hidden"
                       >
-                        <span className="text-[28px] font-extrabold leading-none" style={{ color }}>{value}</span>
-                        <span className="text-[8px] uppercase tracking-widest text-gray-400 text-center mt-1 leading-tight">{label}</span>
-                        {pctChange !== null && (
-                          <span className={`text-[9px] font-bold mt-1 ${pctChange >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
-                            {pctChange >= 0 ? '▲' : '▼'} {Math.abs(pctChange).toFixed(0)}% vs prev period
-                          </span>
+                        {custom ?? (
+                          <div className="w-full h-full flex flex-col items-center justify-center p-2">
+                            <span className="text-[28px] font-extrabold leading-none" style={{ color }}>{value}</span>
+                            {sub && <span className="text-[11px] font-semibold text-gray-500 mt-0.5">{sub}</span>}
+                            <span className="text-[7px] uppercase tracking-widest text-gray-400 text-center mt-1 leading-tight">{label}</span>
+                            {pctChange != null && (
+                              <span className={`text-[9px] font-bold mt-1 ${pctChange >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                                {pctChange >= 0 ? '▲' : '▼'} {Math.abs(pctChange).toFixed(0)}% vs prev
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
                     ))}
