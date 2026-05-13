@@ -2994,6 +2994,42 @@ export default function InsightsPage() {
       {(() => {
         const COLS = 15;
         const ROWS = ['a','b','c','d','e','f','g','h','i','j'] as const;
+        const GRID_STYLE: React.CSSProperties = {
+          display: 'grid',
+          gridTemplateColumns: `repeat(${COLS}, 1fr)`,
+          gridTemplateRows: `repeat(${ROWS.length}, 1fr)`,
+        };
+
+        // Compute slide metrics
+        const totalInteractions = totals.qa + totals.polls + totals.surveys + totals.dl + totals.reactions + totals.ctaTotal;
+        const ipa = totals.att > 0 ? (totalInteractions / totals.att).toFixed(1) : '—';
+
+        const campCodes = new Set<string>();
+        for (const w of filteredWebinars) {
+          if (w.campaignName) {
+            campCodes.add(w.campaignName);
+            campCodes.add(w.campaignName.replace(/\*[^*]*$/, ''));
+          }
+        }
+        const matchedWon = revenueData
+          ? revenueData.programs
+              .filter(p => campCodes.has(p.programName) || campCodes.has(p.programName.replace(/\*[^*]*$/, '')))
+              .reduce((s, p) => s + p.mtWon, 0)
+          : null;
+        const fmtRev = (n: number) =>
+          n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M`
+          : n >= 1_000   ? `$${(n / 1_000).toFixed(0)}K`
+          : `$${Math.round(n)}`;
+
+        type SlotDef = { col: string; row: string; label: string; value: string; color: string };
+        const SLOTS: SlotDef[] = [
+          { col: '1/4',  row: '1/2', label: 'Events',        value: String(filteredWebinars.length),                                                     color: '#0063AC' },
+          { col: '4/7',  row: '1/2', label: 'Registrants',   value: totals.reg >= 1000 ? `${(totals.reg / 1000).toFixed(1)}k` : String(totals.reg),       color: '#00A28F' },
+          { col: '7/10', row: '1/2', label: 'Attendance',     value: fmtPct(totals.attRate),                                                               color: '#059669' },
+          { col: '10/13',row: '1/2', label: 'IPA',            value: ipa,                                                                                  color: '#7030A0' },
+          { col: '13/16',row: '1/2', label: 'MT Won (matched)', value: matchedWon !== null ? fmtRev(matchedWon) : '—',                                     color: '#D97706' },
+        ];
+
         return (
           <Card id="sub-rev-slide" className="px-4 py-4">
             <SectionLabel tip="Fixed 15×10 grid for slide layout. Reference cells by row letter (a–j) and column number (1–15), e.g. a1–c3 spans rows a to c, columns 1 to 3.">
@@ -3013,27 +3049,34 @@ export default function InsightsPage() {
                     <div key={r} className="flex items-center justify-center text-[8px] text-gray-300" style={{ height: 'calc(100% / 10)' }}>{r}</div>
                   ))}
                 </div>
-                {/* Grid */}
-                <div
-                  className="flex-1 border border-gray-200"
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: `repeat(${COLS}, 1fr)`,
-                    gridTemplateRows: `repeat(${ROWS.length}, 1fr)`,
-                    aspectRatio: `${COLS} / ${ROWS.length}`,
-                  }}
-                >
-                  {ROWS.map(row =>
-                    Array.from({ length: COLS }, (_, col) => (
+                {/* Grid — relative container, two layers */}
+                <div className="flex-1 relative border border-gray-200" style={{ aspectRatio: `${COLS} / ${ROWS.length}` }}>
+
+                  {/* Layer 1: coord background */}
+                  <div className="absolute inset-0" style={{ ...GRID_STYLE, pointerEvents: 'none' }}>
+                    {ROWS.map(row =>
+                      Array.from({ length: COLS }, (_, col) => (
+                        <div key={`${row}${col + 1}`} className="border border-dashed border-gray-100 flex items-start justify-start" style={{ padding: '2px 3px' }}>
+                          <span className="text-[6px] text-gray-200 leading-none">{row}{col + 1}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Layer 2: content */}
+                  <div className="absolute inset-0" style={GRID_STYLE}>
+                    {SLOTS.map(({ col, row, label, value, color }) => (
                       <div
-                        key={`${row}${col + 1}`}
-                        className="border border-dashed border-gray-100 flex items-start justify-start"
-                        style={{ padding: '2px 3px' }}
+                        key={label}
+                        style={{ gridColumn: col, gridRow: row, borderTop: `3px solid ${color}` }}
+                        className="bg-white flex flex-col items-center justify-center gap-0.5 p-1"
                       >
-                        <span className="text-[6px] text-gray-200 leading-none">{row}{col + 1}</span>
+                        <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color }}>{value}</span>
+                        <span className="text-[7px] uppercase tracking-widest text-gray-400 text-center leading-tight">{label}</span>
                       </div>
-                    ))
-                  )}
+                    ))}
+                  </div>
+
                 </div>
               </div>
             </div>
