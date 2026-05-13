@@ -3127,21 +3127,21 @@ export default function InsightsPage() {
           // ── Row b ──────────────────────────────────────────────────────────────
           { col: '1/4', row: '2/3', label: 'Email Invite Funnel', color: '#0063AC',
             custom: (
-              <div className="w-full h-full flex flex-col justify-center p-3" style={{ borderTop: '3px solid #0063AC' }}>
+              <div className="w-full h-full flex flex-col justify-center p-3 border-t border-gray-200">
                 <p className="text-[7px] font-bold uppercase tracking-widest text-gray-400 mb-2">Email Invite Funnel</p>
                 <div className="flex items-center justify-around gap-1">
                   <div className="text-center">
-                    <p className="text-[22px] font-extrabold leading-none" style={{ color: '#0063AC' }}>{fmtBig(mktInvited)}</p>
+                    <p className="text-[22px] font-extrabold leading-none text-gray-800">{fmtBig(mktInvited)}</p>
                     <p className="text-[7px] uppercase tracking-wider text-gray-400 mt-0.5">Invited</p>
                   </div>
                   <span className="text-gray-300 text-[10px] shrink-0">→</span>
                   <div className="text-center">
-                    <p className="text-[22px] font-extrabold leading-none" style={{ color: '#00A28F' }}>{fmtPct(emailRegPct)}</p>
+                    <p className="text-[22px] font-extrabold leading-none text-gray-800">{fmtPct(emailRegPct)}</p>
                     <p className="text-[7px] uppercase tracking-wider text-gray-400 mt-0.5">Registered</p>
                   </div>
                   <span className="text-gray-300 text-[10px] shrink-0">→</span>
                   <div className="text-center">
-                    <p className="text-[22px] font-extrabold leading-none" style={{ color: '#059669' }}>{fmtPct(emailAttPct)}</p>
+                    <p className="text-[22px] font-extrabold leading-none text-gray-800">{fmtPct(emailAttPct)}</p>
                     <p className="text-[7px] uppercase tracking-wider text-gray-400 mt-0.5">Attended</p>
                   </div>
                 </div>
@@ -3212,15 +3212,15 @@ export default function InsightsPage() {
 
                   {/* Layer 2: content */}
                   <div className="absolute inset-0" style={GRID_STYLE}>
-                    {SLOTS.map(({ col, row, label, value, sub, color, pctChange, custom }) => (
+                    {SLOTS.map(({ col, row, label, value, sub, pctChange, custom }) => (
                       <div
                         key={label}
-                        style={{ gridColumn: col, gridRow: row, ...(!custom ? { borderTop: `3px solid ${color}` } : {}) }}
+                        style={{ gridColumn: col, gridRow: row }}
                         className="bg-white overflow-hidden"
                       >
                         {custom ?? (
-                          <div className="w-full h-full flex flex-col items-center justify-center p-2">
-                            <span className="text-[28px] font-extrabold leading-none" style={{ color }}>{value}</span>
+                          <div className="w-full h-full flex flex-col items-center justify-center p-2 border-t border-gray-200">
+                            <span className="text-[28px] font-extrabold leading-none text-gray-800">{value}</span>
                             {sub && <span className="text-[11px] font-semibold text-gray-500 mt-0.5">{sub}</span>}
                             <span className="text-[7px] uppercase tracking-widest text-gray-400 text-center mt-1 leading-tight">{label}</span>
                             {pctChange != null && (
